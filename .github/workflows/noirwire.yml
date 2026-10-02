@@ -1,0 +1,41 @@
+name: NoirWire relayer
+
+on:
+  push:
+    paths:
+      - "noirwire/**"
+      - ".github/workflows/noirwire.yml"
+  pull_request:
+    paths:
+      - "noirwire/**"
+
+permissions:
+  contents: read
+
+jobs:
+  refill-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: noirwire/refill
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: noirwire/refill/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  kora-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build both relayer images
+        run: |
+          docker build -t relayer-stable noirwire/kora
+          docker build -t relayer-beta -f noirwire/kora/Dockerfile.account-opening.beta noirwire/kora
+      - name: Pinned images match upstream releases
+        run: bash noirwire/scripts/check-upstream.sh
+        continue-on-error: true
