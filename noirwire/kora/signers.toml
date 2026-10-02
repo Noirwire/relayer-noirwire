@@ -1,0 +1,7 @@
+[signer_pool]
+strategy = "round_robin"
+
+[[signers]]
+name = "fee_payer_1"
+type = "memory"
+private_key_env = "KORA_PRIVATE_KEY"

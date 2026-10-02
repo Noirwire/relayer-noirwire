@@ -1,0 +1,79 @@
+# Kora configuration for the audited stable image (v2.0.5). This is the default.
+#
+# It ships with account opening OFF: the fee payer funds no token account, so the known rent
+# flaw of v2.0.5 cannot be reached. Two settings below carry a second value for turning it on.
+#
+# WARNING: account opening on this release is ONLY safe behind a caller that enforces its own
+# minimum payment for every transaction in which the fee payer funds a token account. v2.0.5
+# charges no rent for a relayer-funded create when the account already exists at signing, so on
+# its own it can be made to give rent away. Never expose this Kora directly or to another client
+# without that rule. Turn it on only by following "Stage two" in ../deploy.md.
+# See "The operating rule" in ../README.md.
+[kora]
+rate_limit = 20
+payment_address = "REPLACE_WITH_PAYMENT_WALLET_PUBKEY"
+
+[kora.auth]
+max_timestamp_age = 60
+
+[kora.enabled_methods]
+liveness = true
+estimate_transaction_fee = true
+get_supported_tokens = false
+get_payer_signer = true
+sign_transaction = true
+sign_and_send_transaction = false
+transfer_transaction = false
+get_blockhash = false
+get_config = true
+
+[validation]
+# The most the fee payer may spend on one transaction.
+#   Account opening off (default): 50000. A relayed transaction has two signatures and no
+#     priority fee, so it costs 10,000 lamports; 50,000 leaves headroom and admits no rent.
+#   Account opening on: 2200000. Opening a Token-2022 account costs 2,136,720 lamports of rent
+#     (a classic token account 2,039,280), so this admits exactly one creation per transaction.
+max_allowed_lamports = 50000
+max_signatures = 2
+price_source = "Jupiter"
+allow_durable_transactions = false
+allowed_programs = [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+    "jup3YeL8QhtSx1e253b2FDvsMNC87fDrgQZivbrndc9",
+    "jupeiUmn818Jg1ekPURTpr4mFo29p46vygyykFJ3wZC",
+]
+allowed_tokens = ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"]
+allowed_spl_paid_tokens = ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"]
+disallowed_accounts = []
+
+[validation.price]
+type = "margin"
+# Kora's own margin over the network cost. The price the user sees is set by the app's server,
+# which may charge more than this: Kora accepts any payment at or above what it requires.
+margin = 0.1
+
+[validation.fee_payer_policy.system]
+allow_transfer = false
+allow_assign = false
+# false by default. true only after "Stage two" in ../deploy.md, together with
+# max_allowed_lamports = 2200000 above.
+allow_create_account = false
+allow_allocate = false
+
+# Underscore on purpose: v2.0.5 silently ignores the spelling [validation.token2022].
+[validation.token_2022]
+blocked_mint_extensions = ["transfer_fee_config", "non_transferable", "interest_bearing_config", "mint_close_authority", "confidential_mint_burn"]
+blocked_account_extensions = ["non_transferable_account", "confidential_transfer_account", "memo_transfer", "cpi_guard"]
+
+[metrics]
+enabled = true
+endpoint = "/metrics"
+port = 9090
+scrape_interval = 60
+
+[metrics.fee_payer_balance]
+enabled = true
+expiry_seconds = 30

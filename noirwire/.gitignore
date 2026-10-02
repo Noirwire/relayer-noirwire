@@ -1,0 +1,22 @@
+# Secrets never go in the repository.
+.env
+.env.*
+!.env.example
+*.env
+
+# Solana keypair files, by the names they are usually given.
+*keypair*.json
+*-key.json
+*_key.json
+*.key.json
+*.key
+id.json
+fee-payer*.json
+payment*.json
+keys/
+kora-keys/
+
+# Dependencies and local state.
+node_modules/
+*.log
+.DS_Store
