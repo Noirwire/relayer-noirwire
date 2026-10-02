@@ -1,3 +1,9 @@
+> **NoirWire fork.** This is [NoirWire](https://noirwire.com)'s fork of
+> [solana-foundation/kora](https://github.com/solana-foundation/kora), used by the wallet at
+> [app.noirwire.com](https://app.noirwire.com). Kora's code below is unchanged. NoirWire's
+> production configuration, the SOL refill job and the deployment guide are in
+> [`noirwire/`](./noirwire/README.md).
+
 <div align="center">
   <br />
   <img src="./kora.svg" alt="Kora" width="140" />
