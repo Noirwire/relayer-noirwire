@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Compares the Kora images pinned in kora/Dockerfile* with the latest upstream releases.
+# Compares each pinned Kora image with upstream's latest release of its own channel:
+# kora/Dockerfile (the default, pre-release) and kora/Dockerfile.stable (the alternative).
 #
 #   ./scripts/check-upstream.sh
 #
@@ -46,6 +47,6 @@ compare() { # label, dockerfile, latest tag
   fi
 }
 
-compare "stable" kora/Dockerfile "$(printf '%s\n' "$releases" | awk '$2=="false"{print $1; exit}')"
-compare "pre-release" kora/Dockerfile.account-opening.beta "$(printf '%s\n' "$releases" | awk '$2=="true"{print $1; exit}')"
+compare "pre-release (default)" kora/Dockerfile "$(printf '%s\n' "$releases" | awk '$2=="true"{print $1; exit}')"
+compare "stable (alternative)" kora/Dockerfile.stable "$(printf '%s\n' "$releases" | awk '$2=="false"{print $1; exit}')"
 exit "$status"

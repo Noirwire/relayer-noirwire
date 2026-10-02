@@ -1,6 +1,10 @@
-# Kora configuration for the PRE-RELEASE image (v2.2.0-beta.8), which may fund new token accounts.
-# Not the default. Built by Dockerfile.account-opening.beta. Read "Stable or pre-release" in the
-# README before switching to it: this release is newer than the audit.
+# Kora configuration for the audited stable image (v2.0.5). The ALTERNATIVE, not the default.
+# Built by Dockerfile.stable. For anyone who prefers the audited release and needs neither
+# Earn (Jupiter Lend) withdrawals, which v2.0.5 cannot relay, nor relayer-funded token accounts.
+#
+# Account opening is OFF and must stay off unless the caller enforces its own minimum payment
+# for every relayer-funded account creation: v2.0.5 charges no rent for a create when the
+# account already exists at signing. See "Stable or pre-release" in ../README.md.
 [kora]
 rate_limit = 20
 payment_address = "REPLACE_WITH_PAYMENT_WALLET_PUBKEY"
@@ -18,13 +22,12 @@ sign_and_send_transaction = false
 transfer_transaction = false
 get_blockhash = false
 get_config = true
-get_version = true
-estimate_bundle_fee = false
-sign_and_send_bundle = false
-sign_bundle = false
 
 [validation]
-max_allowed_lamports = 2200000
+# The most the fee payer may spend on one transaction. A relayed transaction has two signatures
+# and no priority fee, so it costs 10,000 lamports; 50,000 leaves headroom and admits no rent.
+# (With account opening on it would be 2200000: exactly one creation per transaction.)
+max_allowed_lamports = 50000
 max_signatures = 2
 price_source = "Jupiter"
 allow_durable_transactions = false
@@ -42,17 +45,18 @@ disallowed_accounts = []
 
 [validation.price]
 type = "margin"
-# Same margin as the stable file, so switching images does not change what Kora requires.
+# Kora's own margin over the network cost. The price the user sees is set by the app's server,
+# which may charge more than this: Kora accepts any payment at or above what it requires.
 margin = 0.1
 
 [validation.fee_payer_policy.system]
 allow_transfer = false
 allow_assign = false
-allow_create_account = true
+allow_create_account = false
 allow_allocate = false
 
+# Underscore on purpose: v2.0.5 silently ignores the spelling [validation.token2022].
 [validation.token_2022]
-transfer_hook_policy = "allow_all"
 blocked_mint_extensions = ["transfer_fee_config", "non_transferable", "interest_bearing_config", "mint_close_authority", "confidential_mint_burn"]
 blocked_account_extensions = ["non_transferable_account", "confidential_transfer_account", "memo_transfer", "cpi_guard"]
 

@@ -15,7 +15,7 @@ export const RUN_DEADLINE_MS = 8 * 60_000;
 /** How long a submitted swap is watched for before its outcome is called unknown. */
 const SWAP_WAIT_MS = 90_000;
 /**
- * No swap within this many slots (about three minutes) of the wallet's newest transaction
+ * No swap within this many slots (about three minutes) of the wallet's newest swap attempt
  * that this run did not send itself. A blockhash lives about 150 slots, so by then anything
  * an earlier run or a person sent has either landed, and is counted, or can no longer land.
  */
@@ -173,8 +173,8 @@ export async function run(cfg, deps) {
     // Asked first: once the cap is reached nothing else is worth reading.
     const cap = dailyCapRefusal(day.swapAttempts, cfg);
     if (cap) throw new Refusal(cap.code, cap.reason);
-    if (day.newestSlot > 0 && (await conn.getSlot("confirmed")) - day.newestSlot < SWAP_QUIET_SLOTS) {
-      throw new Refusal("recent_activity", "the payment wallet sent a transaction in the last three minutes; no swap until that has settled");
+    if (day.newestSwapSlot > 0 && (await conn.getSlot("confirmed")) - day.newestSwapSlot < SWAP_QUIET_SLOTS) {
+      throw new Refusal("recent_activity", "the payment wallet attempted a swap in the last three minutes; no new swap until that has settled");
     }
     // No point buying SOL that the daily ceiling would then keep out of the fee payer.
     if (withinDailyCeiling(cfg.targetLamports - balances.feePayerLamports, day.lamportsToFeePayer) === 0n) {

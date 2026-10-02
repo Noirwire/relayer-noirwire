@@ -1,14 +1,9 @@
-# Kora configuration for the audited stable image (v2.0.5). This is the default.
+# Kora configuration for v2.2.0-beta.8, the DEFAULT. Built by Dockerfile.
 #
-# It ships with account opening OFF: the fee payer funds no token account, so the known rent
-# flaw of v2.0.5 cannot be reached. Two settings below carry a second value for turning it on.
-#
-# WARNING: account opening on this release is ONLY safe behind a caller that enforces its own
-# minimum payment for every transaction in which the fee payer funds a token account. v2.0.5
-# charges no rent for a relayer-funded create when the account already exists at signing, so on
-# its own it can be made to give rent away. Never expose this Kora directly or to another client
-# without that rule. Turn it on only by following "Stage two" in ../deploy.md.
-# See "The operating rule" in ../README.md.
+# WARNING: run this only behind a caller that verifies the whole transaction and enforces its
+# own minimum payment, rent included, for every transaction in which the fee payer funds a
+# token account. Never expose it directly. This release is newer than Kora's audit; see
+# "Stable or pre-release" in ../README.md for why it is the default anyway and what guards it.
 [kora]
 rate_limit = 20
 payment_address = "REPLACE_WITH_PAYMENT_WALLET_PUBKEY"
@@ -26,14 +21,16 @@ sign_and_send_transaction = false
 transfer_transaction = false
 get_blockhash = false
 get_config = true
+get_version = true
+estimate_bundle_fee = false
+sign_and_send_bundle = false
+sign_bundle = false
 
 [validation]
-# The most the fee payer may spend on one transaction.
-#   Account opening off (default): 50000. A relayed transaction has two signatures and no
-#     priority fee, so it costs 10,000 lamports; 50,000 leaves headroom and admits no rent.
-#   Account opening on: 2200000. Opening a Token-2022 account costs 2,136,720 lamports of rent
-#     (a classic token account 2,039,280), so this admits exactly one creation per transaction.
-max_allowed_lamports = 50000
+# The most the fee payer may spend on one transaction. Opening a Token-2022 account costs
+# 2,136,720 lamports of rent (a classic token account 2,039,280), so 2,200,000 admits exactly
+# one account creation per transaction: two are refused.
+max_allowed_lamports = 2200000
 max_signatures = 2
 price_source = "Jupiter"
 allow_durable_transactions = false
@@ -51,20 +48,21 @@ disallowed_accounts = []
 
 [validation.price]
 type = "margin"
-# Kora's own margin over the network cost. The price the user sees is set by the app's server,
+# Kora's own margin over the network cost. The price the user sees is set by the caller,
 # which may charge more than this: Kora accepts any payment at or above what it requires.
 margin = 0.1
 
 [validation.fee_payer_policy.system]
 allow_transfer = false
 allow_assign = false
-# false by default. true only after "Stage two" in ../deploy.md, together with
-# max_allowed_lamports = 2200000 above.
-allow_create_account = false
+allow_create_account = true
 allow_allocate = false
 
-# Underscore on purpose: v2.0.5 silently ignores the spelling [validation.token2022].
 [validation.token_2022]
+# Required for the tracker mints, whose transfer-hook authority is set though no hook program
+# is: the default policy refuses them. A hook program would also have to be on
+# allowed_programs for Kora to sign a transaction that reaches it.
+transfer_hook_policy = "allow_all"
 blocked_mint_extensions = ["transfer_fee_config", "non_transferable", "interest_bearing_config", "mint_close_authority", "confidential_mint_burn"]
 blocked_account_extensions = ["non_transferable_account", "confidential_transfer_account", "memo_transfer", "cpi_guard"]
 

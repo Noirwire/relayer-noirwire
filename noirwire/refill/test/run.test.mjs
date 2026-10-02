@@ -291,7 +291,7 @@ test("daily limits: only transactions the wallet itself signed inside 24 hours a
   const user = Keypair.generate().publicKey;
   const { signatures, transactions } = history([
     { ageMinutes: 60, slot: 900, tx: landed(cfg, { payer: wallet, touchesUsdc: true }) }, // a swap
-    { ageMinutes: 59, slot: 950, tx: landed(cfg, { payer: wallet, feePayerGain: 70_000_000n }) }, // its refill transfer
+    { ageMinutes: 59, slot: 4_000, tx: landed(cfg, { payer: wallet, feePayerGain: 70_000_000n }) }, // its refill transfer
     { ageMinutes: 30, slot: 2_000, tx: landed(cfg, { payer: user, touchesUsdc: true, usdcGain: 3_000n }) }, // a user's payment
     { ageMinutes: 20, slot: 3_000, tx: landed(cfg, { payer: user, feePayerGain: 5n }) }, // dust from a stranger
     { ageMinutes: 23 * 60, tx: landed(cfg, { payer: wallet, touchesUsdc: true, err: { InstructionError: [] } }) }, // a failed swap still counts
@@ -299,8 +299,8 @@ test("daily limits: only transactions the wallet itself signed inside 24 hours a
     { ageMinutes: 25 * 60, tx: landed(cfg, { payer: wallet, touchesUsdc: true, feePayerGain: 90_000_000n }) }, // too old
   ]);
   const conn = fakeConn(cfg, {}, { signatures, transactions });
-  // newestSlot is the wallet's own newest transaction, not the stranger's.
-  assert.deepEqual(await walletLast24h(conn, cfg, NOW), { swapAttempts: 2, lamportsToFeePayer: 100_000_000n, newestSlot: 1_000 });
+  // newestSwapSlot is the wallet's own newest swap attempt: not its later transfer, not a stranger's payment.
+  assert.deepEqual(await walletLast24h(conn, cfg, NOW), { swapAttempts: 2, lamportsToFeePayer: 100_000_000n, newestSwapSlot: 1_000 });
   assert.equal(conn.count("getTransaction"), 6);
 });
 
@@ -355,7 +355,7 @@ test("daily swap cap reached: the run refuses before asking Jupiter for anything
 
 test("no swap within three minutes of the wallet's last transaction (a possibly unsettled earlier swap)", async () => {
   const cfg = testConfig();
-  const recent = (slot) => history([{ ageMinutes: 1, slot, tx: landed(cfg, { payer: cfg.wallet.publicKey, feePayerGain: 1n }) }]);
+  const recent = (slot) => history([{ ageMinutes: 1, slot, tx: landed(cfg, { payer: cfg.wallet.publicKey, touchesUsdc: true }) }]);
   const state = () => ({ feePayerLamports: 5_000_000n, walletLamports: 10_000_000n, usdc: 80_000_000n });
   const tooSoon = chain(cfg, state(), { ...recent(5_000_000 - SWAP_QUIET_SLOTS + 1), slot: 5_000_000 });
   const jupiter = fakeJupiter({ order: answering(cfg) });
@@ -364,6 +364,25 @@ test("no swap within three minutes of the wallet's last transaction (a possibly 
   assert.equal(jupiter.requests.length, 0);
   const { conn, jupiter: venue } = swapping(cfg, state(), { ...recent(5_000_000 - SWAP_QUIET_SLOTS), slot: 5_000_000 });
   assert.equal((await go(cfg, conn, venue)).exitCode, EXIT.ok);
+});
+
+test("two jobs sharing the payment wallet: the other job's refill transfer does not hold a swap back, its swap does", async () => {
+  const cfg = testConfig();
+  const otherFeePayer = Keypair.generate().publicKey;
+  const state = () => ({ feePayerLamports: 5_000_000n, walletLamports: 10_000_000n, usdc: 80_000_000n });
+  // Moments ago the other job sent SOL from the shared wallet to ITS fee payer.
+  const transfer = { transaction: { message: { staticAccountKeys: [cfg.wallet.publicKey, otherFeePayer], header: { numRequiredSignatures: 1 } } }, meta: { err: null, preBalances: [9, 9], postBalances: [1, 17] } };
+  const quiet = history([{ ageMinutes: 0, slot: 4_999_999, tx: transfer }]);
+  const { conn, jupiter } = swapping(cfg, state(), { ...quiet, slot: 5_000_000 });
+  const first = await go(cfg, conn, jupiter);
+  assert.equal(first.exitCode, EXIT.ok, first.report.reason);
+  // It does not count toward this job's daily SOL ceiling either: that is per fee payer.
+  assert.equal(first.report.solToFeePayerLast24h, "0");
+  // The other job's swap, moments ago, does: it counts toward the shared cap and the quiet time.
+  const swap = history([{ ageMinutes: 0, slot: 4_999_999, tx: landed(cfg, { payer: cfg.wallet.publicKey, touchesUsdc: true }) }]);
+  const second = await go(cfg, chain(cfg, state(), { ...swap, slot: 5_000_000 }), fakeJupiter({ order: answering(cfg) }));
+  assert.equal(second.report.refusal, "recent_activity");
+  assert.equal(second.report.swapsLast24h, 1);
 });
 
 test("daily SOL ceiling: a transfer is cut to the room left, and refused once there is none", async () => {

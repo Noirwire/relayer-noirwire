@@ -4,7 +4,8 @@ This repository is a fork of https://github.com/solana-foundation/kora. Everythi
 lives in the top-level `noirwire/` folder (its own `package.json`, lockfiles and `.gitignore`
 included), so an upstream merge never touches our files and our files never conflict with
 upstream's. We do not build Kora from the fork's source: the services run the **published
-image**, pinned by digest in `noirwire/kora/Dockerfile*`. Updating therefore has two separate
+image**, pinned by digest in `noirwire/kora/Dockerfile` (the default, currently a pre-release)
+and `noirwire/kora/Dockerfile.stable` (the audited alternative). Updating therefore has two separate
 parts: bringing the source tree up to date (for reading and diffing), and moving the pin.
 
 The git commands below are for the repository owner and are NOT VERIFIED here: they were
@@ -65,8 +66,8 @@ Look for:
 ## 4. Move the pin
 
 Get the new digest (the script prints it), then edit the `FROM` line of
-`noirwire/kora/Dockerfile` (stable) or `noirwire/kora/Dockerfile.account-opening.beta`
-(pre-release): both the tag and the `@sha256:` digest. Update the version named in the
+`noirwire/kora/Dockerfile` (the default) or `noirwire/kora/Dockerfile.stable`
+(the alternative): both the tag and the `@sha256:` digest. Update the version named in the
 comment above it, in the header of the matching `.toml`, and in `noirwire/README.md` and
 `noirwire/deploy.md` (search for the old tag and the old digest).
 
@@ -75,16 +76,16 @@ comment above it, in the header of the matching `.toml`, and in `noirwire/README
 ```bash
 cd noirwire/kora
 docker run --rm -v "$PWD":/config:ro -e JUPITER_API_KEY=placeholder \
+  ghcr.io/solana-foundation/kora:<DEFAULT_TAG>@<DEFAULT_DIGEST> \
+  kora --config /config/kora.toml config validate
+
+mkdir -p /tmp/kora-stable && cp kora.stable.toml /tmp/kora-stable/kora.toml
+docker run --rm -v /tmp/kora-stable:/config:ro -e JUPITER_API_KEY=placeholder \
   ghcr.io/solana-foundation/kora:<STABLE_TAG>@<STABLE_DIGEST> \
   kora --config /config/kora.toml config validate
 
-mkdir -p /tmp/kora-beta && cp kora.account-opening.beta.toml /tmp/kora-beta/kora.toml
-docker run --rm -v /tmp/kora-beta:/config:ro -e JUPITER_API_KEY=placeholder \
-  ghcr.io/solana-foundation/kora:<BETA_TAG>@<BETA_DIGEST> \
-  kora --config /config/kora.toml config validate
-
-docker build -t kora-stable-check .
-docker build -t kora-beta-check -f Dockerfile.account-opening.beta .
+docker build -t kora-default-check .
+docker build -t kora-stable-check -f Dockerfile.stable .
 ```
 
 (`config validate` needs a real public key in `payment_address`; the committed placeholder is
@@ -107,32 +108,36 @@ mainnet --host 0.0.0.0 --no-tui --no-studio --no-deploy`), with throwaway keys:
 4. **The rent case, every time:** a relayer-funded create for an account that exists when
    Kora signs and is closed before the transaction lands (`fork-test-runbook.md` section 0).
    Record whether the release charges rent for it. This is the fact the next section turns on.
-5. Validate the stable config in both states: as shipped, and with
-   `allow_create_account = true` and `max_allowed_lamports = 2200000`.
+5. **The Lend withdrawal, every time:** a relayed Jupiter Lend (Earn) withdrawal. `v2.0.5`
+   refuses it ("Instruction doesn't have the required number of accounts"); record whether
+   the release relays it.
 6. The refill job is independent of the Kora version, but run its tests anyway:
    `cd noirwire/refill && npm ci && npm test`.
 
 Nothing in these checks is sent to mainnet.
 
-## 7. The rule for account opening
+## 7. The rule for leaving the pre-release
 
-Today the stable release ships with account opening off, and may fund account creation only
-after "Stage two" in `noirwire/deploy.md`, because only the app's server enforcing a minimum
-payment makes it safe (see "The operating rule" in `noirwire/README.md`). That caller-side rule can
-be relaxed, and the pre-release variant retired, only when a release meets **all** of these:
+The default is a pre-release because the audited stable release cannot relay a Lend
+withdrawal and does not charge rent for a create when the account exists at signing (see
+"Stable or pre-release" in `noirwire/README.md`). Move `kora/Dockerfile` to a new release as
+soon as one meets **all** of these:
 
 1. It is a stable release, not a pre-release.
-2. Its commit is at or before the audited-through commit in `audits/AUDIT_STATUS.md`, so the
-   rent fix is inside audited code.
+2. Its commit is at or before the audited-through commit in `audits/AUDIT_STATUS.md`, so both
+   fixes are inside audited code.
 3. Step 6.4 on the fork shows it charges rent for a relayer-funded create whether or not the
    account exists at signing.
-4. The other fork checks pass with its config.
+4. Step 6.5 on the fork shows it relays a Lend withdrawal.
+5. The other fork checks pass with its config.
 
-Until then: stable keeps relying on the caller's rule, and the pre-release stays an opt-in
-variant. When all four hold, move `kora/Dockerfile` to that release, carry over any config
-keys it needs (the pre-release required `transfer_hook_policy = "allow_all"` for the tracker
-mints), delete the `.account-opening.beta` pair, and update the README's warning. Keep the
-caller's minimum-payment check in the app anyway: it costs nothing and is a second line.
+Until then the pre-release stays the default, behind the safeguards the README lists, and
+the stable files stay as the alternative. When all five hold, pin the new release in
+`kora/Dockerfile`, carry over any config keys it needs, delete the `.stable` pair if the new
+release replaces it, and update the README. Keep the caller's checks in the app anyway.
+
+A newer pre-release is not a reason to move by itself. Take one only for a fix you need, and
+re-run every check above.
 
 ## 8. Deploy
 

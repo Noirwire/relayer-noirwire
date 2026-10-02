@@ -1,5 +1,5 @@
 > Record of the fork test run on 2026-10-02: kept as evidence, not as instructions. File paths in it (`logs/`, `deploy/`, the `.mjs` scripts) refer to the test workspace and are not part of this repository.
-> Where it differs from `../README.md` and `../deploy.md`, those two are current (notably: the default image is now stable v2.0.5, and the key rotation order was corrected).
+> Where it differs from `../README.md` and `../deploy.md`, those two are current (notably: the key rotation order was corrected, and the configuration and pricing sections were superseded).
 
 # Kora fee relayer: operator runbook
 

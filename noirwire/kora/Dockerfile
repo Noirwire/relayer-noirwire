@@ -1,5 +1,5 @@
-# Kora fee relayer, audited stable release. Pinned by digest: v2.0.5.
-FROM ghcr.io/solana-foundation/kora:v2.0.5@sha256:6e575278f559762d673a02c668e6c96ec2c04a2691ab9a668475272c97cd4e9b
+# Kora fee relayer, the default image. Pinned by digest: v2.2.0-beta.8, linux/amd64 and linux/arm64 manifest list.
+FROM ghcr.io/solana-foundation/kora:v2.2.0-beta.8@sha256:1b929cd9b32e6a3dddb646669fbe0d30651e07377b2bface044cd84289df59bf
 WORKDIR /app
 COPY kora.toml signers.toml ./
 # Shell form so the platform's PORT is honoured. RPC_URL, KORA_PRIVATE_KEY, KORA_API_KEY, KORA_HMAC_SECRET,

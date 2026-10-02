@@ -34,8 +34,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build both relayer images
         run: |
-          docker build -t relayer-stable noirwire/kora
-          docker build -t relayer-beta -f noirwire/kora/Dockerfile.account-opening.beta noirwire/kora
+          docker build -t relayer-default noirwire/kora
+          docker build -t relayer-stable -f noirwire/kora/Dockerfile.stable noirwire/kora
       - name: Pinned images match upstream releases
         run: bash noirwire/scripts/check-upstream.sh
         continue-on-error: true

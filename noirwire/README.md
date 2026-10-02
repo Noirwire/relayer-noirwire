@@ -21,8 +21,8 @@ NoirWire's own server.
 Everything here lives in this one folder; all paths below are relative to it.
 
 ```
-kora/        Dockerfile, kora.toml, signers.toml (stable, the default)
-             Dockerfile.account-opening.beta, kora.account-opening.beta.toml (pre-release variant)
+kora/        Dockerfile, kora.toml, signers.toml (v2.2.0-beta.8, the default)
+             Dockerfile.stable, kora.stable.toml (v2.0.5, the audited alternative)
 refill/      the refill job (plain Node, two dependencies) and its tests
 scripts/     check-deploy.sh (a deployed Kora), check-upstream.sh (pinned image against upstream releases)
 .railway/    railway.ts: both Railway services as code
@@ -32,46 +32,85 @@ docs/        updating-from-upstream.md, and the record of the fork test this is 
 
 ## The operating rule
 
-> **WARNING. Account opening on the default image is ONLY safe behind a caller that enforces
-> its own minimum payment for every transaction in which the fee payer funds a token account.**
+> **WARNING. This Kora is ONLY safe behind a caller that verifies the whole transaction and
+> enforces its own minimum payment, rent included, for every transaction in which the fee
+> payer funds a token account.**
 >
-> The default image is Kora `v2.0.5`, the audited stable release. That release has a known
-> flaw: it charges **no rent** for a relayer-funded account creation when the account already
-> exists at the moment Kora signs. Someone who closes the account between signing and landing
-> gets it re-created at the relayer's expense and keeps the rent (2,039,280 lamports per
-> transaction, measured; see `docs/fork-test-runbook.md` section 0).
->
-> So `kora/kora.toml` **ships with `allow_create_account = false`**: the fee payer funds no
-> account and the flaw cannot be reached. Sending to a new recipient then does not go through
-> the relayer; the app routes it elsewhere.
->
-> Turning it on (`allow_create_account = true`, `max_allowed_lamports = 2200000`) is a
-> separate, second stage, described in `deploy.md`. Kora does not close the hole in this
-> release. **The caller does.** Here the only caller is the wallet app's server route, which
-> holds the API key and the HMAC secret, refuses to forward any transaction that has the fee
-> payer fund an account unless it pays at least the rent plus the fee, and sets the price the
-> user sees. Stage two may begin only after that route has passed its own test proving this.
+> Here that caller is the wallet app's server route, and it is the only one: it holds the API
+> key and the HMAC secret, checks each transaction against the template the app built and the
+> user's signature on it, refuses to forward a relayer-funded account creation that does not
+> pay at least the rent plus the fee, and sets the price the user sees.
 >
 > - Never expose this Kora service directly to browsers or to any other client.
 > - Never give the API key and HMAC secret to a caller that does not enforce the same rule.
-> - If you reuse this repository without such a caller, leave `allow_create_account = false`,
->   or use the pre-release variant below.
+> - Do not send real funds through it until the caller's own check has passed against the
+>   deployed route (`deploy.md`, "Before real funds").
+> - A caller must **never fail over to another relayer after an ambiguous signing response**
+>   (a timeout, a dropped connection): the first relayer may have signed, and two signed
+>   copies of one transaction with different fee payers can both land.
+> - If you reuse this repository without such a caller, use the stable alternative with
+>   account opening off (`kora/Dockerfile.stable`), and accept what it cannot do.
 
 ## Stable or pre-release
 
-| | `kora/Dockerfile` + `kora.toml` (default) | `kora/Dockerfile.account-opening.beta` + `kora.account-opening.beta.toml` |
-| --- | --- | --- |
-| Kora | `v2.0.5`, stable | `v2.2.0-beta.8`, pre-release |
-| Audit | inside the audited code | **newer than the audit** |
-| Account opening | off by default; when turned on, rent is not charged if the account already exists at signing: the caller must enforce it | on; rent always charged by Kora itself |
-| Safe without the caller's rule | yes while account opening is off; **no** once it is on | yes, for this flaw |
+Production runs Kora **`v2.2.0-beta.8`, a pre-release**, pinned by digest in `kora/Dockerfile`.
+The audited stable release, `v2.0.5`, is kept as a named alternative. This is the reasoning.
 
-The trade, plainly: stable is audited but can only open accounts safely with the app's server
-enforcing the payment; the pre-release fixes the rent flaw inside Kora but its code has not been through the
-audit. To switch, build the service from `Dockerfile.account-opening.beta` (in Railway: the
+**Why not stable.** Two things, both observed on a mainnet fork:
+
+1. `v2.0.5` cannot relay a Jupiter Lend withdrawal at all. It rebuilds the withdrawal's inner
+   SPL `Burn` with two accounts and then requires three, and refuses the transaction with
+   "Instruction doesn't have the required number of accounts". Earn withdrawals must always
+   work without the user holding SOL, so this alone rules it out here.
+2. `v2.0.5` charges no rent for a relayer-funded account creation when the account already
+   exists at the moment Kora signs. Someone who closes the account between signing and
+   landing gets it re-created at the relayer's expense and keeps the rent (2,039,280 lamports
+   per transaction, measured; `docs/fork-test-runbook.md` section 0). `v2.2.0-beta.8` charges
+   the rent whether or not the account exists.
+
+**What is given up.** The pre-release is newer than Kora's audit. The audit (Runtime
+Verification, `audits/20251119_runtime-verification.pdf` upstream) is commit based:
+upstream's `audits/AUDIT_STATUS.md` names the audited-through commit
+`8c592591debd08424a65cc471ce0403578fd5d5d` and says commits after it "are considered unaudited
+until a new audit or mitigation review updates this file". The code that fixes both problems
+above is after that commit. Upstream also notes that the `solana-keychain` package Kora uses
+has not been audited, in either release.
+
+**What makes that acceptable.** Kora is the second line here, not the first, and what it can
+lose is small and watched:
+
+- Kora is never exposed except to one caller, which verifies the whole transaction against
+  its own template and the user's signature, and enforces its own minimum payment including
+  rent. An unaudited bug in Kora's validation has to get past that first.
+- Every request needs both an API key and an HMAC signature.
+- ComputeBudget is not an allowed program, so no caller can set a priority fee for the
+  relayer to pay: a transaction that fails after signing costs 10,000 lamports, not more.
+- Exactly two signers (`max_signatures = 2`), and at most one account creation per
+  transaction (`max_allowed_lamports = 2200000`).
+- Each fee payer is a key that owns nothing but a small SOL float (0.1 SOL). The collected
+  USDC is in a different wallet whose key Kora never sees.
+- The refill job cannot turn a drained float into drained revenue: at most 0.5 SOL per fee
+  payer per day, and it stops refilling and raises an alarm when the fee payer loses SOL on
+  transactions that did not pay for themselves.
+- The caller never fails over to another relayer after an ambiguous signing response.
+
+**The upgrade rule.** Move to the next **audited stable** release as soon as one contains both
+fixes (a Lend withdrawal relays; rent is charged for a create whatever the account's state at
+signing). `docs/updating-from-upstream.md` has the checks that decide it, and
+`scripts/check-upstream.sh` shows when upstream has released something.
+
+| | `kora/Dockerfile` + `kora.toml` (default) | `kora/Dockerfile.stable` + `kora.stable.toml` (alternative) |
+| --- | --- | --- |
+| Kora | `v2.2.0-beta.8`, pre-release | `v2.0.5`, stable |
+| Audit | **newer than the audit** | inside the audited code |
+| Earn (Jupiter Lend) withdrawal | relays | **refused** |
+| Account opening | on; rent always charged by Kora | off (on is unsafe without the caller's rule: rent not charged for an existing account) |
+| `max_allowed_lamports` | 2,200,000 | 50,000 |
+
+To run the alternative, build the service from `Dockerfile.stable` (in Railway: the
 `RAILWAY_DOCKERFILE_PATH` variable, or `dockerfilePath` in `.railway/railway.ts`) and put the
-payment wallet's address in `kora.account-opening.beta.toml`. On the pre-release the app must
-add a create instruction only when the account is really missing: Kora charges rent for it
+payment wallet's address in `kora.stable.toml`. On the default, the app must add a create
+instruction only when the account is really missing: the pre-release charges rent for it
 either way.
 
 Both configs were checked with their own image's `kora config validate`.
@@ -115,7 +154,7 @@ user --USDC--> payment wallet --part of the USDC--> Jupiter --SOL--> payment wal
 | Refill threshold | 0.03 SOL | at or below this, the job swaps (about 70 percent of the float spent) |
 | Payment wallet reserve | 0.01 SOL | kept back for the job's own fees |
 | Kora margin | 0.1 | Kora requires network cost x 1.1; the app may charge more |
-| `max_allowed_lamports` | 50,000 (account opening off), 2,200,000 (on) | off: a plain transaction costs 10,000, no rent fits. On: admits exactly one account creation per transaction |
+| `max_allowed_lamports` | 2,200,000 | admits exactly one account creation per transaction (50,000 on the stable alternative, where none fits) |
 
 What one transaction costs, from the measured relayer costs, at an illustrative 150 USD per SOL
 (check the live price; these scale with it):
@@ -126,7 +165,7 @@ What one transaction costs, from the measured relayer costs, at an illustrative 
 | USDC send that opens the recipient's account | 2,049,280 lamports = 0.307 USD | 2,254,263 lamports = 0.338 USD | rent x 1.1 = 0.338 USD |
 | Tracker send that opens a Token-2022 account | 2,146,720 lamports = 0.322 USD | 2,361,447 lamports = 0.354 USD | rent x 1.1 = 0.354 USD |
 
-The two account-opening rows apply only once account opening is turned on. The 0.07 SOL
+The 0.07 SOL
 between refills pays for about 7,000 plain transactions or about 34 account openings. The user-facing price is the app server's decision, not a Kora setting: Kora accepts
 any payment at or above what it requires.
 
@@ -221,7 +260,7 @@ cannot reset anything, because every limit is counted from the ledger, read at `
 | USDC never spent | `USDC_FLOOR` (default 1) | balance minus floor |
 | SOL into the fee payer per 24 hours | **constant, 0.5 SOL** (`MAX_LAMPORTS_TO_FEE_PAYER_PER_DAY` in `src/plan.mjs`) | the fee payer's balance gain in every transaction the payment wallet signed in the last 24 hours |
 | Fee payer balance after a refill | `TARGET_SOL` (default 0.1, at most 0.5) | every transfer is cut to target minus current balance |
-| Quiet time before a swap | constant, 450 slots (about three minutes) | slots since the payment wallet's newest transaction that this run did not send |
+| Quiet time before a swap | constant, 450 slots (about three minutes) | slots since the payment wallet's newest swap attempt that this run did not send (plain transfers do not count) |
 
 `MAX_USDC_PER_RUN` defaults to 15: a refill buys at most 0.09 SOL (0.1 target plus the 0.01
 reserve, from empty), which costs 13.5 USDC at 150 USD per SOL. 15 covers a full refill up to
@@ -252,7 +291,9 @@ never skipped. The run refuses (`history_unreadable`) and the next scheduled run
   from each signing a refill, and the job has no storage for a lock. Railway's cron runs one
   execution at a time and skips the next while one is still running (its docs; not tested
   here), so the scheduled service alone cannot do this; a manual `node src/main.mjs` or a
-  second service can. The worst case is bounded: the fee payer ends one refill above its
+  second service for the same fee payer can. (Refill services for different fee payers that
+  share the wallet are meant to exist; their schedules are shifted for the same reason.) The
+  worst case is bounded: the fee payer ends one refill above its
   target (at most 0.2 SOL instead of 0.1, and one extra swap of at most `MAX_USDC_PER_RUN`).
   That stays inside the daily SOL ceiling and the daily swap cap, both of which count it
   afterwards, and the money only moves between the operator's own two wallets. To run it by
@@ -330,8 +371,35 @@ parse. Its error names the variable and the rule, never the value.
 
 `deploy.md` has the full sequence. In short: Kora is a Railway web service built from `kora/`
 with a public domain and the healthcheck `/liveness`; the refill job is a Railway cron service
-built from `refill/`, schedule `*/10 * * * *`, restart policy "never". Both are described in
-`.railway/railway.ts`.
+built from `refill/`, schedule every ten minutes, restart policy "never". Both are described
+in `.railway/railway.ts`.
+
+## More than one relayer
+
+The app's server accepts several relayer endpoints, each with its own fee payer. To run more
+than one:
+
+- **Each replica is its own Kora service with its own fee payer key.** Never give two Kora
+  services the same key.
+- **All replicas use the same payment wallet** (`payment_address` in `kora/kora.toml` is one
+  address for the whole deployment).
+- **One refill service per fee payer.** A refill job handles exactly one `FEE_PAYER`. Run one
+  per replica, with the same `PAYMENT_WALLET_PRIVATE_KEY` and a different `FEE_PAYER`.
+- **Shift their schedules** so two jobs never start in the same minute: replica 1 at :00,
+  :10, ...; replica 2 at :05, :15, .... `.railway/railway.ts` does this when `REPLICAS` is 2.
+  Two jobs running at once on one wallet are the "second copy" case below.
+
+How the limits behave when jobs share a wallet:
+
+| Limit | Scope | Meaning with two replicas |
+| --- | --- | --- |
+| `MAX_RUNS_PER_DAY` (swaps) | **shared**: counted on the payment wallet | both jobs draw on one count, on purpose: it caps how often the wallet's USDC is spent. With two replicas, 6 per day is three each; raise it on both services if that is too few |
+| Daily SOL ceiling, 0.5 SOL | **per job**: counted on that job's fee payer | two replicas can receive up to 1 SOL a day between them |
+| Drain alarm | per job, on its own fee payer | one replica halting does not halt the other |
+| Fee payer proof | per job | each fee payer needs its own first relayed payment, or `FEE_PAYER_UNSEEN_OK` once |
+| Quiet time before a swap | shared: any swap by the wallet | one job's swap holds the other's back for three minutes; with shifted schedules it never does. One job's plain refill transfer never holds the other back, so they cannot deadlock |
+
+`deploy.md` has the steps for adding a second replica.
 
 ## Monitoring and alerts
 
@@ -407,21 +475,22 @@ can move to a newer audited release.
 cd refill && npm ci && npm test
 ```
 
-90 tests, no network: configuration, the decision logic, the guard against hostile orders
+91 tests, no network: configuration, the decision logic, the guard against hostile orders
 and fills, the price reference, unknown outcomes, the daily limits, the fee payer proof, the
 reconciliation and the drain halt, timeouts and the deadline, and the pinned transfer
 destination.
 
 ## What was verified, and what was not
 
-Verified on 2026-10-02:
+Verified on 2026-10-02 and 2026-10-03:
 
-- Both Kora configs pass their own image's `kora config validate`, the stable one in both
-  states (account opening off and on); both Dockerfiles build. The stable image built from
-  `kora/Dockerfile` ran against a local mainnet fork, answered `/liveness`, refused
-  unauthenticated and half-authenticated calls with 401, and reported its settings and its
-  fee payer through `getConfig` and `getPayerSigner`. `initialize-atas` and
-  `config validate-with-rpc` worked on the stable image against the fork.
+- Both Kora configs pass their own image's `kora config validate`; both Dockerfiles build.
+  The default image built from `kora/Dockerfile` ran against a local mainnet fork, answered
+  `/liveness`, refused unauthenticated and half-authenticated calls with 401, and reported its
+  settings and its fee payer through `getConfig` and `getPayerSigner`.
+- The relayed flows on the default release with this configuration at a 10 percent margin
+  (sends, account-opening sends, Earn deposit and withdrawal) and the refusals:
+  `docs/fork-test-runbook.md` section 8.
 - The refill job on a local mainnet fork, each run a fresh process, with real signatures: the
   transfer legs (steps 1 and 3 are the same code), the fee payer proof and its one-time
   acknowledgement, a wrong `FEE_PAYER` receiving nothing, the swap cap with inbound dust
@@ -451,9 +520,11 @@ Verified on 2026-10-02:
   that an overlapping cron run is skipped is from Railway's docs, not from a test.
 - How Railway reports a cron run that exits non-zero, and whether its builder picks Node 22
   or newer from `refill/package.json`.
-- The stable image's end-to-end relayed flows. The fork test in `docs/` ran them on the
-  pre-release with a 10 percent margin; on stable only one first Earn deposit was run. The
-  caller-side minimum-payment rule lives in the app and was not tested here.
+- The caller-side checks. They live in the app; its test for the minimum payment is named in
+  `deploy.md` and was not run here. The stable alternative's failure on a Lend withdrawal was
+  established by the app's team on a fork, not re-run here.
+- Two refill jobs sharing one payment wallet on a fork. The shared counter and the quiet-time
+  behaviour are covered by unit tests only.
 - Kora pricing against the live Jupiter price (`price_source = "Jupiter"` with a real key).
 - Landing a plain transfer without a priority fee under congestion. The refill transfer
   carries none; if it expires the run exits 1 and the next one retries.

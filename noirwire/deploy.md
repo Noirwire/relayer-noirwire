@@ -41,8 +41,9 @@ the safe place is outside the working tree, as above.
 In `kora/kora.toml`, replace `REPLACE_WITH_PAYMENT_WALLET_PUBKEY` with the PAYMENT_WALLET
 public key. It is a public address; committing it is fine.
 
-Leave `allow_create_account = false` and `max_allowed_lamports = 50000` as they ship. Account
-opening is turned on later, in "Stage two" at the end of this file, and not before.
+The file is for Kora `v2.2.0-beta.8`, the default (`README.md`, "Stable or pre-release", says
+why). Account opening is on from the start, which is why "Before real funds" below is not
+optional.
 
 ## 3. Fund the wallets and open the USDC account
 
@@ -61,7 +62,7 @@ configuration against the chain. Verified on the fork with this image:
 
 ```bash
 cd kora
-KORA=ghcr.io/solana-foundation/kora:v2.0.5@sha256:6e575278f559762d673a02c668e6c96ec2c04a2691ab9a668475272c97cd4e9b
+KORA=ghcr.io/solana-foundation/kora:v2.2.0-beta.8@sha256:1b929cd9b32e6a3dddb646669fbe0d30651e07377b2bface044cd84289df59bf
 export KORA_PRIVATE_KEY="$(cat ~/kora-keys/fee-payer.json)"
 
 docker run --rm -v "$PWD":/config:ro -e RPC_URL=<YOUR_MAINNET_RPC> -e JUPITER_API_KEY=<key> -e KORA_PRIVATE_KEY \
@@ -225,7 +226,7 @@ signs with and where it collects payments, and **fails if those are not the `FEE
 `PAYMENT_WALLET` you passed**. `FEE_PAYER` is the only address the refill job ever sends SOL
 to, so do not set that variable on the refill service until this check passes with the same
 value. It also prints the settings the running server reports: expect `"margin":0.1`,
-`"max_allowed_lamports":50000`, `"allow_create_account":false`, `"max_signatures":2`.
+`"max_allowed_lamports":2200000`, `"allow_create_account":true`, `"max_signatures":2`.
 
 ## 10. First refill
 
@@ -261,35 +262,86 @@ about a copy started elsewhere. Two copies can each sign a refill from the same 
 result is the fee payer one refill above its target, inside the daily ceiling, between your
 own two wallets. Disable the cron service first, or use `DRY_RUN=1`.
 
-## Stage two: turning account opening on
+## 11. Before real funds
 
-Until this stage the relayer does not fund new token accounts, and the app sends
-account-opening actions another way. Do this stage only when all of the following hold:
+Account opening is on, and Kora is only the second line of defence. Do not point real users
+or real funds at the relayer until all of these hold:
 
-1. **Precondition, not optional:** the wallet app's deployed server route has passed the app
-   team's own test proving that it enforces the minimum payment for a relayer-funded account
-   creation, both when the recipient's account is missing and when it already exists. That
-   test belongs to the app and is provided by the app team; ask them for its result against
-   the deployed route. Without it, stop here.
+1. **The caller's minimum-payment check passes against the deployed route.** It is the test
+   "relayer route: minimum payment for a relayer-funded account" in the app repository's
+   `tests/relayer/minimum-payment.test.ts`. Run it there:
+
+   ```bash
+   RELAYER_CHECK_APP_URL=<app url> RELAYER_CHECK_RPC_URL=<rpc url> npm run test:relayer
+   ```
+
+   It belongs to the app, not to this repository, and was not run as part of this work. If it
+   fails, stop: the relayer must not be used until it passes.
 2. The Kora URL, API key and HMAC secret are known to that server route and to nothing else.
-3. Stage one has run cleanly for a while: refills work, no `drain_suspected`.
+3. Steps 9 and 10 passed: Kora signs with the fee payer you set, a refill run is clean.
 
-Then, in `kora/kora.toml`:
+Then watch the refill job's `reconcile` output for the first account-opening sends:
+`underpaid` must stay 0. An account creation that was not paid for is 2,039,280 lamports
+uncovered and halts refills (exit 4) on the next run.
 
-```toml
-max_allowed_lamports = 2200000     # was 50000: admits exactly one account creation
+## 12. Adding a second relayer
 
-[validation.fee_payer_policy.system]
-allow_create_account = true        # was false
+The app's server accepts several relayer endpoints, each with its own fee payer
+(`README.md`, "More than one relayer", explains the limits). A second replica is one more Kora
+service and one more refill service. Same payment wallet, new fee payer.
+
+```bash
+# A new fee payer key, funded with 0.1 SOL. The payment wallet and its USDC account already exist.
+solana-keygen new --no-bip39-passphrase --outfile ~/kora-keys/fee-payer-2.json
+solana-keygen pubkey ~/kora-keys/fee-payer-2.json        # FEE_PAYER_2
+solana transfer --url <YOUR_MAINNET_RPC> --from <funded-keypair.json> <FEE_PAYER_2> 0.1 --allow-unfunded-recipient
+
+railway add --service kora-2
+railway add --service refill-2
+
+# kora-2: the same values as kora, except its own key.
+printf '%s' '<YOUR_MAINNET_RPC>'           | railway variable set RPC_URL          --stdin --service kora-2 --skip-deploys
+cat ~/kora-keys/fee-payer-2.json           | railway variable set KORA_PRIVATE_KEY --stdin --service kora-2 --skip-deploys
+printf '%s' '<same KORA_API_KEY>'          | railway variable set KORA_API_KEY     --stdin --service kora-2 --skip-deploys
+printf '%s' '<same KORA_HMAC_SECRET>'      | railway variable set KORA_HMAC_SECRET --stdin --service kora-2 --skip-deploys
+printf '%s' '<your Jupiter API key>'       | railway variable set JUPITER_API_KEY  --stdin --service kora-2 --skip-deploys
+
+# refill-2: the SAME payment wallet key, the NEW fee payer.
+printf '%s' '<YOUR_MAINNET_RPC>'           | railway variable set RPC_URL                    --stdin --service refill-2 --skip-deploys
+cat ~/kora-keys/payment.json               | railway variable set PAYMENT_WALLET_PRIVATE_KEY --stdin --service refill-2 --skip-deploys
+printf '%s' '<your Jupiter API key>'       | railway variable set JUPITER_API_KEY            --stdin --service refill-2 --skip-deploys
+railway variable set FEE_PAYER=<FEE_PAYER_2> --service refill-2 --skip-deploys
+railway variable set FEE_PAYER_UNSEEN_OK=<FEE_PAYER_2> --service refill-2 --skip-deploys
+railway variable set MAX_USDC_PER_SOL=<same value as refill> --service refill-2 --skip-deploys
 ```
 
-Validate (the command under "Changing things later"), deploy the `kora` service again
-(step 7), and re-run the checks (step 9): expect `"max_allowed_lamports":2200000` and
-`"allow_create_account":true`. Then watch the refill job's `reconcile` output for the first
-account-opening sends: `underpaid` must stay 0. An account creation that was not paid for is
-2,039,280 lamports uncovered and halts refills (exit 4) on the next run.
+Then set `const REPLICAS = 2;` in `.railway/railway.ts` and apply. It gives `kora-2` the same
+settings as `kora`, and `refill-2` the same as `refill` except its schedule, `5-59/10 * * * *`
+(:05, :15, ...), five minutes after `refill`'s, so the two jobs never start together.
 
-To turn it off again, put both values back and redeploy.
+```bash
+railway config plan
+railway config apply
+railway up kora   --path-as-root --service kora-2
+railway up refill --path-as-root --service refill-2
+railway domain --service kora-2 --port 8080
+KORA_URL=https://<kora-2 domain> FEE_PAYER=<FEE_PAYER_2> PAYMENT_WALLET=<PAYMENT_WALLET> ./scripts/check-deploy.sh
+```
+
+Finally add the second endpoint and `FEE_PAYER_2` to the app's server configuration, and
+remove `FEE_PAYER_UNSEEN_OK` from `refill-2` after that replica's first relayed transaction.
+
+Things that differ from a single relayer:
+
+- The swap cap (`MAX_RUNS_PER_DAY`) is counted on the shared payment wallet, so both jobs draw
+  on one count. If six swaps a day is too few for two fee payers, raise it on **both** refill
+  services to the same value.
+- The 0.5 SOL daily ceiling is per refill job, so two replicas can receive up to 1 SOL a day.
+- Using the shared API key and HMAC secret on both replicas is the simple setup; separate
+  secrets per replica also work if the app's server is configured with both.
+- The file supports one or two replicas. A third needs its own schedule offset, and Railway
+  requires five minutes between a service's runs; think about the wallet's shared swap cap
+  before adding one.
 
 ## Changing things later
 
@@ -299,7 +351,7 @@ To turn it off again, put both values back and redeploy.
 
   ```bash
   cd kora && docker run --rm -v "$PWD":/config:ro -e JUPITER_API_KEY=placeholder \
-    ghcr.io/solana-foundation/kora:v2.0.5@sha256:6e575278f559762d673a02c668e6c96ec2c04a2691ab9a668475272c97cd4e9b \
+    ghcr.io/solana-foundation/kora:v2.2.0-beta.8@sha256:1b929cd9b32e6a3dddb646669fbe0d30651e07377b2bface044cd84289df59bf \
     kora --config /config/kora.toml config validate
   ```
 

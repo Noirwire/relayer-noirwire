@@ -96,8 +96,12 @@ const DAY_MAX_PAGES = 5;
 
 /**
  * What the payment wallet did in the last 24 hours, read from the chain: how many swaps it
- * attempted, how much SOL it moved into the fee payer, and the slot of its newest
- * transaction. Both daily limits are enforced from this.
+ * attempted, how much SOL it moved into this job's fee payer, and the slot of its newest
+ * swap attempt. Both daily limits are enforced from this.
+ *
+ * When several refill jobs share one payment wallet (one per relayer replica), the swap
+ * count is the wallet's, so the swap cap is shared by all of them on purpose: it limits how
+ * often the wallet's USDC is spent, whoever spends it. The SOL total is per fee payer.
  *
  * There is no database, so a restart, a redeploy or a second copy of the job cannot reset
  * either number: they are whatever the ledger says. Only transactions the wallet itself
@@ -112,7 +116,9 @@ const DAY_MAX_PAGES = 5;
  * in one day, and stalling is the safe side of that.
  *
  * `ownSignatures` are transactions this very run sent and saw confirmed; they are left out
- * of `newestSlot`, which exists to notice activity this run does not know about.
+ * of `newestSwapSlot`, which exists to notice a swap this run does not know about. Plain
+ * transfers are not swaps and never hold a swap back, so two jobs sharing the wallet do not
+ * block each other by refilling.
  */
 export async function walletLast24h(conn, cfg, nowSeconds, ownSignatures = new Set()) {
   const wallet = cfg.wallet.publicKey;
@@ -128,16 +134,18 @@ export async function walletLast24h(conn, cfg, nowSeconds, ownSignatures = new S
   }
   let swapAttempts = 0;
   let lamportsToFeePayer = 0n;
-  let newestSlot = 0;
+  let newestSwapSlot = 0;
   transactions.forEach((landed, index) => {
     const { signature, slot } = entries[index];
     if (!signedBy(landed, wallet)) return;
-    if (allKeys(landed).some((key) => key.equals(usdcAccount))) swapAttempts += 1;
+    if (allKeys(landed).some((key) => key.equals(usdcAccount))) {
+      swapAttempts += 1;
+      if (!ownSignatures.has(signature) && slot > newestSwapSlot) newestSwapSlot = slot;
+    }
     const gained = lamportsDelta(landed, cfg.feePayer);
     if (gained > 0n) lamportsToFeePayer += gained;
-    if (!ownSignatures.has(signature) && slot > newestSlot) newestSlot = slot;
   });
-  return { swapAttempts, lamportsToFeePayer, newestSlot };
+  return { swapAttempts, lamportsToFeePayer, newestSwapSlot };
 }
 
 /** How far back the fee payer's own transactions are reconciled: one cron interval and a half. */
