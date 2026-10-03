@@ -1,0 +1,22 @@
+{
+  "name": "relayer-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multi-customer gateway in front of per-customer Kora fee relayers: prepares, checks and forwards one transaction template.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/main.mjs",
+    "dev": "node scripts/dev.mjs",
+    "smoke": "node scripts/dev.mjs --smoke",
+    "lint": "for f in src/*.mjs src/store/*.mjs test/*.mjs scripts/*.mjs; do node --check \"$f\" || exit 1; done",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "dependencies": {
+    "@solana/spl-token": "0.4.15",
+    "@solana/web3.js": "1.99.0",
+    "pg": "8.23.1"
+  }
+}

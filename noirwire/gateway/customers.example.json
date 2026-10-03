@@ -1,0 +1,21 @@
+{
+  "customers": [
+    {
+      "id": "example-app",
+      "name": "Example App (placeholder, not a real customer)",
+      "apiKeyHash": "REPLACE_WITH_LOWERCASE_HEX_SHA256_OF_THE_CUSTOMERS_API_KEY",
+      "templates": ["usdc-transfer"],
+      "markupBps": 5000,
+      "payoutAccount": "REPLACE_WITH_THE_CUSTOMERS_USDC_TOKEN_ACCOUNT",
+      "paymentAccount": "REPLACE_WITH_THE_USDC_TOKEN_ACCOUNT_OF_THIS_CUSTOMERS_KORA_PAYMENT_WALLET",
+      "koraUrl": "http://REPLACE-WITH-THE-PRIVATE-ADDRESS-OF-THIS-CUSTOMERS-KORA:8080/",
+      "feePayer": "REPLACE_WITH_THE_FEE_PAYER_PUBLIC_KEY_OF_THIS_CUSTOMERS_KORA",
+      "budgets": {
+        "requestsPerMinute": 120,
+        "transactionsPerDay": 1000,
+        "networkCostMicroUsdcPerDay": "5000000"
+      },
+      "status": "active"
+    }
+  ]
+}
