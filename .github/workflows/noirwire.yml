@@ -2,40 +2,92 @@ name: NoirWire relayer
 
 on:
   push:
+    branches: [main]
     paths:
       - "noirwire/**"
       - ".github/workflows/noirwire.yml"
   pull_request:
     paths:
       - "noirwire/**"
+      - ".github/workflows/noirwire.yml"
+  schedule:
+    # Report-only: tells us when upstream has a new Kora release. Never fails the run.
+    - cron: "17 8 * * 1"
 
 permissions:
   contents: read
 
+concurrency:
+  group: noirwire-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  refill-tests:
+  refill:
+    name: refill lint and tests
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: noirwire/refill
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: noirwire/refill/package-lock.json
       - run: npm ci
+      # Plain Node (no TypeScript, no bundler), so "lint" is a syntax check of every module;
+      # there is no separate type-check step because there is no type system to check.
+      - name: lint (node --check)
+        run: node --check src/*.mjs test/*.mjs
       - run: npm test
 
-  kora-config:
+  kora-image:
+    name: kora image build and config validate
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: noirwire/kora
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: build default (pre-release) image
+        run: docker build -t relayer-default .
+      - name: build stable (audited alternative) image
+        run: docker build -t relayer-stable -f Dockerfile.stable .
+      - name: validate default config
+        # kora config validate refuses the committed placeholder payment_address (it is not a
+        # real key); swap in a well-formed dummy address in a throwaway copy, never the
+        # checked-in file, just so the rest of the config (programs, policies, auth) validates.
+        run: |
+          mkdir -p "$RUNNER_TEMP/kora-default"
+          cp kora.toml "$RUNNER_TEMP/kora-default/kora.toml"
+          sed -i 's/REPLACE_WITH_PAYMENT_WALLET_PUBKEY/11111111111111111111111111111111/' "$RUNNER_TEMP/kora-default/kora.toml"
+          docker run --rm -v "$RUNNER_TEMP/kora-default:/config:ro" -e JUPITER_API_KEY=placeholder \
+            relayer-default kora --config /config/kora.toml config validate
+      - name: validate stable config
+        run: |
+          mkdir -p "$RUNNER_TEMP/kora-stable"
+          cp kora.stable.toml "$RUNNER_TEMP/kora-stable/kora.toml"
+          sed -i 's/REPLACE_WITH_PAYMENT_WALLET_PUBKEY/11111111111111111111111111111111/' "$RUNNER_TEMP/kora-stable/kora.toml"
+          docker run --rm -v "$RUNNER_TEMP/kora-stable:/config:ro" -e JUPITER_API_KEY=placeholder \
+            relayer-stable kora --config /config/kora.toml config validate
+
+  shellcheck:
+    name: shellcheck noirwire/scripts
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Build both relayer images
-        run: |
-          docker build -t relayer-default noirwire/kora
-          docker build -t relayer-stable -f noirwire/kora/Dockerfile.stable noirwire/kora
-      - name: Pinned images match upstream releases
-        run: bash noirwire/scripts/check-upstream.sh
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      # ubuntu-latest runners carry shellcheck preinstalled; no action or extra dependency needed.
+      - run: shellcheck noirwire/scripts/*.sh
+
+  upstream-check:
+    name: weekly upstream release check (report only)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - run: noirwire/scripts/check-upstream.sh
         continue-on-error: true

@@ -1,8 +1,49 @@
-> **NoirWire fork.** This is [NoirWire](https://noirwire.com)'s fork of
-> [solana-foundation/kora](https://github.com/solana-foundation/kora), used by the wallet at
-> [app.noirwire.com](https://app.noirwire.com). Kora's code below is unchanged. NoirWire's
-> production configuration, the SOL refill job and the deployment guide are in
-> [`noirwire/`](./noirwire/README.md).
+<div align="center">
+  <br />
+  <img src="./noirwire/docs/assets/noirwire-mark.svg" alt="NoirWire" width="96" />
+  <br />
+  <br />
+
+  <h3>NoirWire's Kora fork</h3>
+
+  <br />
+
+[![NoirWire relayer](https://github.com/Noirwire/relayer-noirwire/actions/workflows/noirwire.yml/badge.svg)](https://github.com/Noirwire/relayer-noirwire/actions/workflows/noirwire.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
+
+  <br />
+  <br />
+</div>
+
+**This is [NoirWire](https://noirwire.com)'s production fork of Kora**, the fee relayer behind
+the wallet at [app.noirwire.com](https://app.noirwire.com). Kora's own code, below, is
+unchanged.
+
+- Everything NoirWire adds lives in [`noirwire/`](./noirwire/README.md), with its own
+  `package.json`, lockfiles and `.gitignore`, so an upstream merge never touches it and it
+  never conflicts with upstream. See `noirwire/docs/updating-from-upstream.md`.
+- The relayer runs the **published Kora image**, pinned by digest, not a build from this
+  source tree. Config, both Dockerfiles and why the default is a pre-release are in
+  [`noirwire/README.md`](./noirwire/README.md).
+- A small Node job in `noirwire/refill/` keeps the fee payer topped up with SOL bought from
+  collected USDC.
+- `noirwire/deploy.md` is the Railway deployment sequence, service by service.
+- You are welcome to run your own relayer from this fork. NoirWire's hosted instance is not a
+  public endpoint; it only answers NoirWire's own server.
+
+**CI** (`.github/workflows/noirwire.yml`) lints and tests the refill job, builds both Kora
+images and validates their configuration, and shellchecks `noirwire/scripts/`, on every push
+and pull request touching `noirwire/`. A weekly, report-only job flags new upstream Kora
+releases.
+
+**Security:** found a way to make the relayer pay for something it should not, or to move the
+payment wallet's funds? Email ph1l1ph@proton.me before publishing it, see `noirwire/README.md`,
+"Security". Issues in Kora itself belong in [upstream's `SECURITY.md`](SECURITY.md).
+
+Licensed under MIT, same as upstream: [LICENSE.md](LICENSE.md). Other NoirWire repositories:
+[shared-noirwire](https://github.com/Noirwire/shared-noirwire),
+[mobile-noirwire](https://github.com/Noirwire/mobile-noirwire). More at
+[noirwire.com](https://noirwire.com).
 
 <div align="center">
   <br />

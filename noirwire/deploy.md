@@ -188,6 +188,20 @@ RELAYER_GITHUB_REPO=<owner>/<repo> railway config apply
 Keep `RELAYER_GITHUB_REPO` set on every later `railway config apply`, or the plan will want
 to remove the source.
 
+### Gate deploys on CI passing
+
+With deploys wired to GitHub, turn on Railway's **Wait for CI** on each service (Settings,
+Source, "Wait for CI") so a deploy only starts once `.github/workflows/noirwire.yml` has
+passed on that commit. Railway waits for every GitHub Actions check suite on the commit to
+conclude, skips the deploy outright on a failed one, and deploys anyway after two hours if
+nothing reports. It requires the workflow to trigger on `push` with `branches: [main]`, which
+`noirwire.yml` already does.
+
+One consequence of the path filter: a push to `main` that touches neither `noirwire/**` nor
+the workflow file produces no run of `noirwire.yml` at all, which GitHub reports as a skipped
+check. Wait for CI does not block on a skipped check, so such a push still deploys. That is
+the intended behaviour, not a reason to drop the filter.
+
 ## 8. Give Kora a public domain
 
 Kora only. The refill job needs none and must not have one.

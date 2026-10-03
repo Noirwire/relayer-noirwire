@@ -10,7 +10,7 @@
 # not be read. A newer release is a prompt to read docs/updating-from-upstream.md, not to bump.
 
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 2
 
 REPO=solana-foundation/kora
 ACCEPT='application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'
