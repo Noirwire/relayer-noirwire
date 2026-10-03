@@ -1,6 +1,7 @@
 node_modules
 test
-scripts
+scripts/*
+!scripts/reset-failures.mjs
 .env
 .env.*
 *.md

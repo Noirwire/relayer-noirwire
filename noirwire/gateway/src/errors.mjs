@@ -12,6 +12,8 @@ const TABLE = {
   template_not_enabled: [403, "This customer may not use this transaction template."],
   rate_limited: [429, "Too many requests. Try again in a minute."],
   budget_exhausted: [429, "The customer's daily budget is used up."],
+  too_many_open_quotes: [429, "This customer has too many open quotes. Sign them or let them expire."],
+  customer_paused: [403, "This customer is paused: too many of its transactions failed on chain."],
 
   // The transaction as a whole.
   oversize_transaction: [422, "The transaction is larger than a Solana packet allows."],
@@ -48,6 +50,9 @@ const TABLE = {
   source_not_owned_by_user: [422, "A source account is not owned by the signing user."],
   recipient_invalid: [422, "The recipient account does not exist or is not a USDC token account."],
   payment_account_invalid: [502, "The customer's payment account does not exist or is not a USDC token account."],
+  payment_account_not_platform: [502, "The customer's payment account is not one the platform owns. Nothing was signed."],
+  insufficient_balance: [422, "The source account does not hold the transfer plus the payments."],
+  source_busy: [409, "Another transaction from this source account is not settled yet. Try again shortly."],
   payout_account_invalid: [502, "The customer's payout account does not exist or is not a USDC token account."],
 
   // Cost.
@@ -66,7 +71,10 @@ const TABLE = {
   sign_in_progress: [409, "This quote is being signed. Ask again with the same quote."],
   kora_refused: [502, "The relayer refused to sign. Nothing was sent."],
   kora_bad_response: [502, "The relayer's answer could not be trusted. Nothing was sent."],
+  not_recorded: [503, "The signed transaction could not be recorded, so it was not sent. Prepare again."],
   broadcast_rejected: [502, "The network refused the transaction. Nothing landed."],
+  failed_on_chain: [409, "The transaction was included in a block and failed. Nothing was transferred."],
+  transaction_expired: [410, "The transaction did not land before its blockhash expired. Prepare again."],
   outcome_unknown: [502, "The transaction may or may not land. It will not be retried. Check the chain."],
   internal: [500, "Internal error. Nothing was signed."],
 };

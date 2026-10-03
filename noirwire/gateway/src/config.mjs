@@ -12,8 +12,13 @@ const DEFAULTS = {
   COMPUTE_UNIT_LIMIT: "30000",
   MAX_PRIORITY_MICRO_LAMPORTS: "500000",
   MAX_NETWORK_COST_MICRO_USDC: "100000",
-  COST_BUFFER_BPS: "0",
+  // Not 0: the relayer prices its fee with a live oracle, so the cost moves inside a quote's
+  // lifetime, and a quote of the exact cost is refused at /v1/sign whenever it moved up.
+  COST_BUFFER_BPS: "100",
   QUOTE_TTL_SECONDS: "45",
+  MAX_OPEN_QUOTES: "500",
+  QUOTE_RETENTION_DAYS: "30",
+  MAX_FAILED_ON_CHAIN: "5",
   MAX_PRICE_AGE_SECONDS: "60",
   UPSTREAM_TIMEOUT_MS: "15000",
 };
@@ -25,12 +30,18 @@ const RANGES = {
   COMPUTE_UNIT_LIMIT: [20_000, 200_000],
   MAX_PRIORITY_MICRO_LAMPORTS: [0, 10_000_000],
   MAX_NETWORK_COST_MICRO_USDC: [1, 5_000_000],
-  COST_BUFFER_BPS: [0, 1_000],
+  // The buffer is paid by the user, so it has a hard cap of five percent.
+  COST_BUFFER_BPS: [0, 500],
   // A blockhash lives about a minute; a quote must not outlive the transaction it prices.
   QUOTE_TTL_SECONDS: [5, 60],
+  MAX_OPEN_QUOTES: [1, 10_000],
+  QUOTE_RETENTION_DAYS: [1, 365],
+  MAX_FAILED_ON_CHAIN: [1, 1_000],
   MAX_PRICE_AGE_SECONDS: [1, 120],
   UPSTREAM_TIMEOUT_MS: [1_000, 30_000],
 };
+
+const MAX_PLATFORM_PAYMENT_OWNERS = 5;
 
 export class ConfigError extends Error {}
 
@@ -69,6 +80,24 @@ export function loadConfig(env, readFile = (path) => readFileSync(path, "utf8"))
     problems.push("USDC_MINT: not a public key");
   }
 
+  // The wallets that may own a payment account, where our share lands. They are the
+  // operator's setting and deliberately not a field of the customers file: whoever can edit
+  // a customer record must not be able to say which wallets are ours.
+  const platformPaymentOwners = [];
+  const ownerList = (read("PLATFORM_PAYMENT_OWNERS") ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
+  if (ownerList.length < 1 || ownerList.length > MAX_PLATFORM_PAYMENT_OWNERS || new Set(ownerList).size !== ownerList.length) {
+    problems.push(`PLATFORM_PAYMENT_OWNERS: required, 1 to ${MAX_PLATFORM_PAYMENT_OWNERS} distinct wallet public keys separated by commas`);
+  } else {
+    for (const entry of ownerList) {
+      try {
+        platformPaymentOwners.push(new PublicKey(entry));
+      } catch {
+        problems.push("PLATFORM_PAYMENT_OWNERS: an entry is not a public key");
+        break;
+      }
+    }
+  }
+
   let customers = null;
   const customersFile = read("CUSTOMERS_FILE");
   if (!customersFile) {
@@ -89,12 +118,16 @@ export function loadConfig(env, readFile = (path) => readFileSync(path, "utf8"))
     store,
     databaseUrl,
     usdcMint,
+    platformPaymentOwners,
     customers,
     computeUnitLimit: integer("COMPUTE_UNIT_LIMIT"),
     maxPriorityMicroLamports: BigInt(integer("MAX_PRIORITY_MICRO_LAMPORTS")),
     maxNetworkCostMicroUsdc: BigInt(integer("MAX_NETWORK_COST_MICRO_USDC")),
     costBufferBps: integer("COST_BUFFER_BPS"),
     quoteTtlMs: integer("QUOTE_TTL_SECONDS") * 1000,
+    maxOpenQuotes: integer("MAX_OPEN_QUOTES"),
+    retentionMs: integer("QUOTE_RETENTION_DAYS") * 86_400_000,
+    maxFailedOnChain: integer("MAX_FAILED_ON_CHAIN"),
     maxPriceAgeSeconds: integer("MAX_PRICE_AGE_SECONDS"),
     upstreamTimeoutMs: integer("UPSTREAM_TIMEOUT_MS"),
   };

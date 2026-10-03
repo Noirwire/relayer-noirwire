@@ -7,7 +7,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY src ./src
 COPY migrations ./migrations
+# The operator's reset of a paused customer; it runs against the same database.
+COPY scripts/reset-failures.mjs ./scripts/reset-failures.mjs
 USER node
-# PORT, RPC_URL, STORE, DATABASE_URL, CUSTOMERS_FILE and the per-customer secrets come from the
+# PORT, RPC_URL, STORE, DATABASE_URL, CUSTOMERS_FILE, PLATFORM_PAYMENT_OWNERS and the per-customer secrets come from the
 # service's variables. The customers file is mounted or baked in by the deployment, never here.
 CMD ["node", "src/main.mjs"]

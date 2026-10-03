@@ -51,6 +51,8 @@ if (!smoke) {
 
   print(`fake Kora saw: ${world.fetchFn.requests.map((request) => request.method).join(", ")}`);
   print(`fake RPC broadcasts: ${world.conn.count("sendRawTransaction")}`);
+  const stored = await world.store.getQuote(prepared.body.quoteId);
+  print(`stored quote: state ${stored.state}, signature kept in the store only: ${stored.signature === signed.body.signature}`);
   await http.close();
   const ok = health.status === 200 && prepared.status === 200 && signed.status === 200 && repeat.body.signature === signed.body.signature && world.conn.count("sendRawTransaction") === 1;
   print(ok ? "smoke: ok" : "smoke: FAILED");

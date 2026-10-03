@@ -1,17 +1,17 @@
-// Requests per customer per minute, counted in this process in fixed one-minute windows.
-// It protects the upstreams from a customer's runaway loop; the limits that protect money
-// are the daily budgets in the store, which are shared by every process.
+// Requests per customer per minute, in fixed one-minute windows, counted in this process.
+// This is the in-memory store's rate limit. The Postgres store counts the same windows in
+// the database, so there the limit is shared by every gateway process.
 
-const WINDOW_MS = 60_000;
+export const RATE_WINDOW_MS = 60_000;
 
-export function createRateLimiter(clock) {
+export function createRateLimiter() {
   const windows = new Map();
   return {
     /** Counts one request. False when the customer is over its limit for this minute. */
-    allow(customerId, requestsPerMinute) {
-      const window = Math.floor(clock.now() / WINDOW_MS);
+    allow(customerId, requestsPerMinute, nowMs) {
+      const window = Math.floor(nowMs / RATE_WINDOW_MS);
       const current = windows.get(customerId);
-      if (!current || current.window !== window) {
+      if (!current || current.window < window) {
         windows.set(customerId, { window, count: 1 });
         return true;
       }

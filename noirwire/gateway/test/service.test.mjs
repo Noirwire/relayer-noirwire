@@ -141,8 +141,12 @@ test("prepare refuses input that is not exactly what it expects", async () => {
 
 test("prepare accepts the largest and the smallest amounts exactly", async () => {
   const world = makeWorld();
-  assert.equal(transfersOf(decode((await world.prepare({ amountMicroUsdc: "18446744073709551615" })).transaction))[0].amount, 2n ** 64n - 1n);
+  // The most an account can hold, less the two payments (1,760 and 640).
+  const most = 2n ** 64n - 1n - 2_400n;
+  world.accounts.set(world.userUsdc.toBase58(), tokenAccount(USDC, world.user.publicKey, { amount: 2n ** 64n - 1n }));
+  assert.equal(transfersOf(decode((await world.prepare({ amountMicroUsdc: most.toString() })).transaction))[0].amount, most);
   assert.equal(transfersOf(decode((await world.prepare({ amountMicroUsdc: 1 })).transaction))[0].amount, 1n);
+  await refuses(world.prepare({ amountMicroUsdc: "18446744073709551615" }), "insufficient_balance");
 });
 
 test("prepare refuses a recipient that is the source, the payment account or the payout account", async () => {
@@ -161,6 +165,24 @@ test("prepare refuses accounts the chain does not vouch for", async () => {
   await refuses(world.prepare({ recipient: other().toBase58() }), "recipient_invalid");
   // A recipient wallet with no USDC account yet: creating one is not this template.
   await refuses(world.prepare({ recipient: world.recipientWallet.publicKey.toBase58() }), "recipient_invalid");
+});
+
+test("a customer set up with its own payment account and a Kora that agrees with it is refused, at prepare and at sign", async () => {
+  // The customer controls the record and its Kora: both name the customer's own wallet.
+  const own = Keypair.generate().publicKey;
+  const world = makeWorld();
+  const prepared = await world.prepare();
+  world.koraState.paymentAddress = own;
+  world.accounts.set(world.paymentAccount.toBase58(), tokenAccount(USDC, own));
+  await refuses(world.prepare(), "payment_account_not_platform");
+  await refuses(world.sign(prepared), "payment_account_not_platform");
+  assert.equal(world.fetchFn.count("signTransaction"), 0);
+  // The refusal comes from the chain and the operator's setting, before Kora is asked.
+  const fresh = makeWorld();
+  fresh.koraState.paymentAddress = own;
+  fresh.accounts.set(fresh.paymentAccount.toBase58(), tokenAccount(USDC, own));
+  await refuses(fresh.prepare(), "payment_account_not_platform");
+  assert.equal(fresh.fetchFn.requests.length, 0);
 });
 
 test("prepare refuses when Kora, the price or the chain is unavailable, and stores no quote", async () => {
@@ -209,7 +231,9 @@ test("sign forwards the prepared transaction once and returns the fee payer's si
   assert.equal(signature, base58Encode(broadcast.signatures[0]));
   assert.equal(world.conn.count("sendRawTransaction"), 1);
   assert.equal(world.fetchFn.count("signTransaction"), 1);
-  assert.deepEqual(report, { quoteId: prepared.quoteId, networkCostMicroUsdc: "1600", platformMicroUsdc: "1760", customerMicroUsdc: "640", signature });
+  // What the log line may carry: the quote id, and neither the amounts nor the signature.
+  assert.deepEqual(report, { quoteId: prepared.quoteId });
+  assert.equal((await world.store.getQuote(prepared.quoteId)).signature, signature);
   assert.deepEqual(await world.store.budgetUsed("acme", "2027-01-15"), { transactions: 1, cost: 1_600n });
 });
 
@@ -450,8 +474,13 @@ test("the daily network cost budget is enforced to the micro-USDC", async () => 
 
 test("budgets hold under concurrent signs of different quotes", async () => {
   const world = makeWorld({ customer: { budgets: { requestsPerMinute: 600, transactionsPerDay: 3, networkCostMicroUsdcPerDay: "1000000" } } });
+  // Twelve source accounts of the one user: a source carries one unsettled transaction at a time.
   const quotes = [];
-  for (let i = 0; i < 12; i += 1) quotes.push(await world.prepare({ amountMicroUsdc: String(1_000 + i) }));
+  for (let i = 0; i < 12; i += 1) {
+    const source = other();
+    world.accounts.set(source.toBase58(), tokenAccount(USDC, world.user.publicKey));
+    quotes.push(await world.prepare({ source: source.toBase58(), amountMicroUsdc: String(1_000 + i) }));
+  }
   const results = await Promise.allSettled(quotes.map((prepared) => world.sign(prepared)));
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 3);
   assert.equal(results.filter((result) => result.status === "rejected" && result.reason.code === "budget_exhausted").length, 9);
@@ -529,7 +558,8 @@ test("a broadcast with no answer is an unknown outcome that carries the signatur
   const error = await world.sign(prepared, report).catch((thrown) => thrown);
   assert.ok(error instanceof UnknownOutcome);
   assert.match(error.signature, /^[1-9A-HJ-NP-Za-km-z]{80,90}$/);
-  assert.equal(report.signature, error.signature);
+  assert.deepEqual(report, { quoteId: prepared.quoteId });
+  assert.equal((await world.store.getQuote(prepared.quoteId)).signature, error.signature);
   // The RPC works again; the transaction is still never sent a second time.
   world.conn.options.onSend = null;
   const again = await world.sign(prepared).catch((thrown) => thrown);
@@ -539,15 +569,41 @@ test("a broadcast with no answer is an unknown outcome that carries the signatur
   assert.equal(world.fetchFn.count("signTransaction"), 1);
 });
 
-test("a failed or unknown sign keeps its budget consumed", async () => {
+test("a sign Kora refused gives its budget back: nothing was signed", async () => {
   const world = makeWorld();
   world.koraState.signError = true;
   await refuses(world.sign(await world.prepare()), "kora_refused");
+  assert.deepEqual(await world.store.budgetUsed("acme", "2027-01-15"), { transactions: 0, cost: 0n });
+  // The refund happens once: repeating the refused quote changes nothing.
+  world.koraState.signError = false;
+  assert.ok((await world.sign(await world.prepare())).signature);
   assert.deepEqual(await world.store.budgetUsed("acme", "2027-01-15"), { transactions: 1, cost: 1_600n });
+});
+
+test("no refund once a signature may exist: Kora silent, a bad answer, a rejected or lost broadcast", async () => {
+  const cases = [
+    (world) => void (world.koraState.signNetworkError = true),
+    (world) => void (world.koraState.hang = "sign"),
+    (world) => void (world.koraState.tamper = "message"),
+    (world) => void (world.conn.options.onSend = () => {
+      throw new SendTransactionError({ action: "send", signature: "", transactionMessage: "Transaction simulation failed" });
+    }),
+    (world) => void (world.conn.options.onSend = () => {
+      throw new Error("socket hang up");
+    }),
+  ];
+  for (const arrange of cases) {
+    const world = makeWorld();
+    const prepared = await world.prepare();
+    arrange(world);
+    await assert.rejects(world.sign(prepared));
+    assert.deepEqual(await world.store.budgetUsed("acme", "2027-01-15"), { transactions: 1, cost: 1_600n });
+  }
 });
 
 test("a claim abandoned mid-flight is in progress at first and unknown once stale", async () => {
   const world = makeWorld();
+  world.conn.options.autoLand = false;
   const prepared = await world.prepare();
   // The outcome cannot be recorded: the store fails after the broadcast.
   world.store.finishSign = async () => {

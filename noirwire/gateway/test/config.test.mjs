@@ -32,14 +32,17 @@ const second = (fields = {}) => {
 const secondEnv = { GATEWAY_HMAC_SECRET_GLOBEX: "g".repeat(40), KORA_API_KEY_GLOBEX: "h".repeat(40), KORA_HMAC_SECRET_GLOBEX: "i".repeat(40) };
 
 test("defaults are the documented numbers", () => {
-  const cfg = load();
+  const cfg = load({ COST_BUFFER_BPS: "" });
   assert.equal(cfg.port, 8787);
   assert.equal(cfg.usdcMint.toBase58(), "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
   assert.equal(cfg.computeUnitLimit, 30_000);
   assert.equal(cfg.maxPriorityMicroLamports, 500_000n);
   assert.equal(cfg.maxNetworkCostMicroUsdc, 100_000n);
-  assert.equal(cfg.costBufferBps, 0);
+  assert.equal(cfg.costBufferBps, 100);
   assert.equal(cfg.quoteTtlMs, 45_000);
+  assert.equal(cfg.maxOpenQuotes, 500);
+  assert.equal(cfg.retentionMs, 30 * 86_400_000);
+  assert.equal(cfg.maxFailedOnChain, 5);
   assert.equal(cfg.maxPriceAgeSeconds, 60);
   assert.equal(cfg.upstreamTimeoutMs, 15_000);
   assert.equal(cfg.store, "memory");
@@ -88,7 +91,12 @@ test("refuses settings outside their hard ranges", () => {
   refuses(/MAX_PRIORITY_MICRO_LAMPORTS/, { MAX_PRIORITY_MICRO_LAMPORTS: "999999999" });
   refuses(/MAX_NETWORK_COST_MICRO_USDC/, { MAX_NETWORK_COST_MICRO_USDC: "0" });
   refuses(/MAX_NETWORK_COST_MICRO_USDC/, { MAX_NETWORK_COST_MICRO_USDC: "50000000" });
-  refuses(/COST_BUFFER_BPS/, { COST_BUFFER_BPS: "5000" });
+  refuses(/COST_BUFFER_BPS/, { COST_BUFFER_BPS: "501" });
+  assert.equal(load({ COST_BUFFER_BPS: "500" }).costBufferBps, 500);
+  assert.equal(load({ COST_BUFFER_BPS: "0" }).costBufferBps, 0);
+  refuses(/MAX_OPEN_QUOTES/, { MAX_OPEN_QUOTES: "0" });
+  refuses(/QUOTE_RETENTION_DAYS/, { QUOTE_RETENTION_DAYS: "0" });
+  refuses(/MAX_FAILED_ON_CHAIN/, { MAX_FAILED_ON_CHAIN: "0" });
   refuses(/QUOTE_TTL_SECONDS/, { QUOTE_TTL_SECONDS: "600" });
   refuses(/MAX_PRICE_AGE_SECONDS/, { MAX_PRICE_AGE_SECONDS: "0" });
   refuses(/UPSTREAM_TIMEOUT_MS/, { UPSTREAM_TIMEOUT_MS: "100" });
@@ -173,6 +181,18 @@ test("customers are isolated: no shared id, key, fee payer, Kora or payment acco
   refuses(/share the same paymentAccount/, secondEnv, [base.customerEntry, second({ paymentAccount: base.customerEntry.paymentAccount })]);
 });
 
+test("the platform payment owners come from the environment: one to five distinct wallets", () => {
+  const wallet = () => Keypair.generate().publicKey.toBase58();
+  const owners = [wallet(), wallet(), wallet()];
+  assert.deepEqual(load({ PLATFORM_PAYMENT_OWNERS: ` ${owners.join(" , ")} ` }).platformPaymentOwners.map((owner) => owner.toBase58()), owners);
+  refuses(/PLATFORM_PAYMENT_OWNERS: required/, { PLATFORM_PAYMENT_OWNERS: "" });
+  refuses(/PLATFORM_PAYMENT_OWNERS: required/, { PLATFORM_PAYMENT_OWNERS: Array.from({ length: 6 }, wallet).join(",") });
+  refuses(/PLATFORM_PAYMENT_OWNERS: required/, { PLATFORM_PAYMENT_OWNERS: `${owners[0]},${owners[0]}` });
+  refuses(/PLATFORM_PAYMENT_OWNERS: an entry is not a public key/, { PLATFORM_PAYMENT_OWNERS: `${owners[0]},not-a-key` });
+  // It is not a field a customer record can carry.
+  refuses(/has a field that is not allowed/, {}, withCustomer({ platformPaymentOwner: owners[0] }));
+});
+
 test("reports every problem at once", () => {
   refuses(/RPC_URL.*STORE.*markupBps.*status/s, { RPC_URL: "", STORE: "" }, withCustomer({ markupBps: 99_999, status: "x" }));
 });
@@ -189,7 +209,7 @@ test("no secret and no raw value ever appears in an error", () => {
     }
     assert.fail("accepted a bad value");
   };
-  for (const name of ["PORT", "RPC_URL", "STORE", "USDC_MINT", "COMPUTE_UNIT_LIMIT", "MAX_PRIORITY_MICRO_LAMPORTS", "MAX_NETWORK_COST_MICRO_USDC", "COST_BUFFER_BPS", "QUOTE_TTL_SECONDS", "MAX_PRICE_AGE_SECONDS", "UPSTREAM_TIMEOUT_MS"]) {
+  for (const name of ["PORT", "RPC_URL", "STORE", "USDC_MINT", "COMPUTE_UNIT_LIMIT", "MAX_PRIORITY_MICRO_LAMPORTS", "MAX_NETWORK_COST_MICRO_USDC", "COST_BUFFER_BPS", "QUOTE_TTL_SECONDS", "MAX_PRICE_AGE_SECONDS", "UPSTREAM_TIMEOUT_MS", "PLATFORM_PAYMENT_OWNERS", "MAX_OPEN_QUOTES", "QUOTE_RETENTION_DAYS", "MAX_FAILED_ON_CHAIN"]) {
     leaks(() => load({ [name]: secret }));
   }
   leaks(() => load({ STORE: "postgres", DATABASE_URL: `https://user:${secret}@db` }));

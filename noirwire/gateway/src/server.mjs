@@ -1,12 +1,15 @@
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { authenticate } from "./auth.mjs";
 import { Refusal, UnknownOutcome } from "./errors.mjs";
 
 // The HTTP surface: three routes, JSON in and out, one JSON log line per request.
 //
-// A log line carries the customer id, the route, the outcome, the quote id, the amounts and
-// the transaction signature. It never carries a request body, a transaction, a header, a
-// user's address or anything an upstream said.
+// A log line carries an opaque event id made here, the route, the customer id, the quote id
+// and the outcome. It never carries a transaction signature, an amount, an address, a
+// request body, a transaction, a header or anything an upstream said. A signature next to
+// a customer and a quote would let anyone who reads logs look the transaction up on chain
+// and learn who paid whom; signatures are kept in the store only.
 
 /** A prepared transaction is at most 1644 base64 characters; nothing sent here needs more. */
 export const MAX_BODY_BYTES = 8 * 1024;
@@ -31,7 +34,7 @@ function readBody(request) {
   });
 }
 
-export function createGatewayServer({ service, customers, rateLimiter, clock, log }) {
+export function createGatewayServer({ service, customers, store, clock, log, newEventId = randomUUID }) {
   const routes = { "/v1/prepare": service.prepare, "/v1/sign": service.sign };
 
   async function handle(request, report) {
@@ -48,7 +51,8 @@ export function createGatewayServer({ service, customers, rateLimiter, clock, lo
       throw error;
     }
     report.customer = customer.id;
-    if (!rateLimiter.allow(customer.id, customer.budgets.requestsPerMinute)) throw new Refusal("rate_limited");
+    // Counted in the store, so the limit holds across every gateway process.
+    if (!(await store.allowRequest(customer.id, customer.budgets.requestsPerMinute, clock.now()))) throw new Refusal("rate_limited");
 
     let body;
     try {
@@ -63,7 +67,7 @@ export function createGatewayServer({ service, customers, rateLimiter, clock, lo
     const startedAt = clock.now();
     // Known routes are logged by name; anything else is not echoed into the log.
     const route = request.url === "/health" || routes[request.url] ? request.url : "other";
-    const report = { time: new Date(startedAt).toISOString(), route, method: request.method };
+    const report = { time: new Date(startedAt).toISOString(), eventId: newEventId(), route, method: request.method };
     let status = 200;
     let answer;
     try {

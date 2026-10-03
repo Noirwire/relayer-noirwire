@@ -1,0 +1,131 @@
+# Kora configuration for ONE customer's instance behind the relayer gateway.
+# One instance, one fee payer and one copy of this file per customer.
+#
+# Written against Kora v2.2.0-beta.8 (crates/lib/src/config.rs). Kora refuses to start on a
+# field it does not know, so every name here is a field of that version. Secrets are not in
+# this file: KORA_API_KEY and KORA_HMAC_SECRET come from the environment and must equal the
+# gateway's KORA_API_KEY_<ID> and KORA_HMAC_SECRET_<ID> for this customer. The Jupiter price
+# source also needs JUPITER_API_KEY in the environment.
+#
+# Lines marked REQUIRED are what the gateway depends on. Each says what breaks otherwise.
+
+[kora]
+# Requests per second, all methods together. One prepare makes two estimateTransactionFee
+# calls, one sign makes one more and one signTransaction. Keep it above the customer's
+# requestsPerMinute / 60 * 2, or prepares are refused with kora_unavailable.
+rate_limit = 50
+
+# REQUIRED. The wallet that owns this customer's paymentAccount in the customers file, which
+# must be one of the gateway's PLATFORM_PAYMENT_OWNERS. If it is unset Kora uses the fee
+# payer; if it names any other wallet every prepare and sign is refused with kora_mismatch.
+payment_address = "REPLACE_WITH_THE_PLATFORM_PAYMENT_OWNER_WALLET"
+
+# REQUIRED false (the default). The gateway asks for an estimate before the user has signed
+# and asks for the signature with the fee payer's slot empty. With true, Kora simulates with
+# signature verification on and both calls fail.
+force_sig_verify = false
+
+[kora.auth]
+# The gateway signs every request with the current time; a minute covers clock drift.
+max_timestamp_age = 60
+
+[kora.lighthouse]
+# REQUIRED false (the default). The assertion is an extra instruction, so the message Kora
+# signs is no longer the one the user signed. The gateway then refuses to broadcast it:
+# every sign ends in kora_bad_response.
+enabled = false
+
+[kora.usage_limit]
+# REQUIRED false (the default). The gateway sends no user id; limits per customer are the
+# gateway's daily budgets.
+enabled = false
+fallback_if_unavailable = false
+
+[kora.enabled_methods]
+liveness = true
+# REQUIRED true: the two methods the gateway calls. Without the first no quote is issued,
+# without the second every sign ends in kora_refused.
+estimate_transaction_fee = true
+sign_transaction = true
+# Everything else off. The gateway broadcasts itself, so Kora never needs to.
+sign_and_send_transaction = false
+transfer_transaction = false
+get_supported_tokens = false
+get_payer_signer = false
+get_blockhash = false
+get_config = false
+get_version = false
+estimate_bundle_fee = false
+sign_and_send_bundle = false
+sign_bundle = false
+
+[validation]
+# The most the fee payer may spend on one transaction, in lamports. The template costs two
+# signatures (10,000) plus the priority fee, which the gateway caps at
+# COMPUTE_UNIT_LIMIT * MAX_PRIORITY_MICRO_LAMPORTS / 1,000,000 (15,000 with the defaults).
+# Lower than that total and transactions with a priority fee are refused at sign.
+max_allowed_lamports = 50000
+# Optional second cap on the priority fee alone, in lamports. Not below the gateway's cap
+# (15,000 with the defaults), or the same transactions are refused. 0 forbids priority fees:
+# then set MAX_PRIORITY_MICRO_LAMPORTS=0 on the gateway too.
+max_priority_fee_lamports = 15000
+# REQUIRED 2: the fee payer and the user. With 1 every sign is refused.
+max_signatures = 2
+price_source = "Jupiter"
+# REQUIRED false (the default): the gateway refuses durable nonces itself.
+allow_durable_transactions = false
+# REQUIRED: SPL Token for the transfers, and ComputeBudget because a transaction with a
+# priority fee carries two ComputeBudget instructions. Without ComputeBudget every such
+# transaction is refused (or set MAX_PRIORITY_MICRO_LAMPORTS=0 on the gateway). Nothing
+# else: the template calls no other program.
+allowed_programs = [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "ComputeBudget111111111111111111111111111111",
+]
+# REQUIRED: the USDC mint of the network, the same as the gateway's USDC_MINT. Without it in
+# both lists no fee can be estimated or paid and nothing is quoted.
+allowed_tokens = ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"]
+allowed_spl_paid_tokens = ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"]
+disallowed_accounts = []
+# Leave empty (the default): a required program the template does not call refuses everything.
+require_one_of_programs = []
+
+[validation.price]
+# REQUIRED: margin 0. The gateway's markup is the only margin, and the split (B, S, C) is
+# computed from what Kora asks for. A margin here is silently charged to the user inside B.
+# "free" makes Kora estimate 0 and "fixed" a constant: the gateway would then quote its own
+# floor instead of the relayer's price.
+type = "margin"
+margin = 0.0
+
+[validation.fee_payer_policy.system]
+# The fee payer only pays the fee. The gateway refuses any transaction that names it in an
+# instruction, and Kora is told the same.
+allow_transfer = false
+allow_assign = false
+allow_create_account = false
+allow_allocate = false
+
+[validation.fee_payer_policy.spl_token]
+allow_transfer = false
+allow_burn = false
+allow_close_account = false
+allow_approve = false
+allow_revoke = false
+allow_set_authority = false
+allow_mint_to = false
+allow_initialize_mint = false
+allow_initialize_account = false
+allow_initialize_multisig = false
+allow_freeze_account = false
+allow_thaw_account = false
+
+[metrics]
+enabled = true
+endpoint = "/metrics"
+port = 9090
+scrape_interval = 60
+
+[metrics.fee_payer_balance]
+enabled = true
+expiry_seconds = 30

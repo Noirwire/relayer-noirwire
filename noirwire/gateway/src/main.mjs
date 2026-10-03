@@ -1,9 +1,9 @@
 import { Connection } from "@solana/web3.js";
+import { paymentAccountProblems } from "./accounts.mjs";
 import { bounded } from "./bounded.mjs";
 import { ConfigError, loadConfig } from "./config.mjs";
 import { createKora } from "./kora.mjs";
 import { createPythPriceSource } from "./price.mjs";
-import { createRateLimiter } from "./ratelimit.mjs";
 import { createGatewayServer } from "./server.mjs";
 import { createService } from "./service.mjs";
 import { createMemoryStore } from "./store/memory.mjs";
@@ -30,8 +30,8 @@ const clock = { now: Date.now };
 // Every RPC call is given a wall-clock bound; web3.js has none of its own.
 const conn = bounded(new Connection(cfg.rpcUrl, "confirmed"), cfg.upstreamTimeoutMs);
 const store = cfg.store === "postgres"
-  ? createPostgresStore({ databaseUrl: cfg.databaseUrl, timeoutMs: cfg.upstreamTimeoutMs })
-  : createMemoryStore();
+  ? createPostgresStore({ databaseUrl: cfg.databaseUrl, timeoutMs: cfg.upstreamTimeoutMs, retentionMs: cfg.retentionMs })
+  : createMemoryStore({ retentionMs: cfg.retentionMs });
 if (cfg.store === "postgres") {
   try {
     await store.check();
@@ -39,6 +39,11 @@ if (cfg.store === "postgres") {
     refuseToStart("DATABASE_URL: the database could not be reached or the migration has not been applied");
   }
 }
+
+// Where our share goes is checked against the chain before the first request, and again on
+// every prepare and sign.
+const accountProblems = await paymentAccountProblems(conn, cfg);
+if (accountProblems.length > 0) refuseToStart(accountProblems.join("; "));
 
 const service = createService(
   {
@@ -50,7 +55,7 @@ const service = createService(
   },
   cfg,
 );
-const server = createGatewayServer({ service, customers: cfg.customers, rateLimiter: createRateLimiter(clock), clock, log: print });
+const server = createGatewayServer({ service, customers: cfg.customers, store, clock, log: print });
 
 server.listen(cfg.port, () => {
   print({ time: new Date().toISOString(), event: "start", outcome: "listening", port: cfg.port, store: cfg.store, customers: cfg.customers.list.length });

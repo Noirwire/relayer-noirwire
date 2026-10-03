@@ -182,15 +182,35 @@ test("the per-customer rate limit is per minute", async (t) => {
 
 test("the rate limiter counts each customer separately", () => {
   const clock = fakeClock();
-  const limiter = createRateLimiter(clock);
-  assert.ok(limiter.allow("a", 2) && limiter.allow("a", 2));
-  assert.equal(limiter.allow("a", 2), false);
-  assert.ok(limiter.allow("b", 2));
+  const limiter = createRateLimiter();
+  assert.ok(limiter.allow("a", 2, clock.now()) && limiter.allow("a", 2, clock.now()));
+  assert.equal(limiter.allow("a", 2, clock.now()), false);
+  assert.ok(limiter.allow("b", 2, clock.now()));
   clock.advance(60_000);
-  assert.ok(limiter.allow("a", 2));
+  assert.ok(limiter.allow("a", 2, clock.now()));
 });
 
-test("one log line per request: customer, route, outcome, quote and amounts, and nothing secret", async (t) => {
+test("the rate limit is the store's, so two gateway processes over one store share it", async (t) => {
+  const { world, http } = await served(t, { customer: { budgets: { requestsPerMinute: 3, transactionsPerDay: 100, networkCostMicroUsdcPerDay: "1000000" } } });
+  const second = await listen(world);
+  t.after(second.close);
+  assert.equal((await http.call("/v1/prepare", world.prepareBody())).status, 200);
+  assert.equal((await second.call("/v1/prepare", world.prepareBody())).status, 200);
+  assert.equal((await http.call("/v1/prepare", world.prepareBody())).status, 200);
+  assert.equal((await second.call("/v1/prepare", world.prepareBody())).body.error.code, "rate_limited");
+  assert.equal((await http.call("/v1/prepare", world.prepareBody())).body.error.code, "rate_limited");
+});
+
+test("a rate limit that cannot be counted refuses the request", async (t) => {
+  const { world, http } = await served(t);
+  world.store.allowRequest = async () => {
+    throw new Error("database gone");
+  };
+  assert.equal((await http.call("/v1/prepare", world.prepareBody())).status, 500);
+  assert.equal(world.fetchFn.requests.length, 0);
+});
+
+test("one log line per request: event id, customer, route, quote and outcome, and nothing that finds the transaction", async (t) => {
   const { world, http } = await served(t);
   const prepared = (await http.call("/v1/prepare", world.prepareBody())).body;
   const signedBody = world.signedBody(prepared);
@@ -198,16 +218,24 @@ test("one log line per request: customer, route, outcome, quote and amounts, and
   await http.call("/v1/sign", { ...signedBody, quoteId: "missing" });
   assert.equal(http.lines.length, 3);
 
-  const amounts = { quoteId: prepared.quoteId, networkCostMicroUsdc: "1600", platformMicroUsdc: "1760", customerMicroUsdc: "640" };
   const [first, second, third] = http.lines;
-  assert.deepEqual({ ...first, ms: 0 }, { time: new Date(NOW * 1000).toISOString(), route: "/v1/prepare", method: "POST", customer: "acme", ...amounts, outcome: "ok", status: 200, ms: 0 });
-  assert.deepEqual({ ...second, ms: 0 }, { time: first.time, route: "/v1/sign", method: "POST", customer: "acme", ...amounts, signature: signed.signature, outcome: "ok", status: 200, ms: 0 });
-  assert.deepEqual({ ...third, ms: 0 }, { time: first.time, route: "/v1/sign", method: "POST", customer: "acme", outcome: "refused", code: "quote_not_found", status: 404, ms: 0 });
+  const eventIds = http.lines.map((line) => line.eventId);
+  for (const eventId of eventIds) assert.match(eventId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.equal(new Set(eventIds).size, 3);
+  const line = (fields) => ({ time: new Date(NOW * 1000).toISOString(), eventId: "", method: "POST", customer: "acme", ...fields, ms: 0 });
+  assert.deepEqual({ ...first, eventId: "", ms: 0 }, line({ route: "/v1/prepare", quoteId: prepared.quoteId, outcome: "ok", status: 200 }));
+  assert.deepEqual({ ...second, eventId: "", ms: 0 }, line({ route: "/v1/sign", quoteId: prepared.quoteId, outcome: "ok", status: 200 }));
+  assert.deepEqual({ ...third, eventId: "", ms: 0 }, line({ route: "/v1/sign", outcome: "refused", code: "quote_not_found", status: 404 }));
 
-  const text = http.lines.map((line) => JSON.stringify(line)).join("\n");
-  for (const secret of [API_KEY, ...Object.values(world.secrets), prepared.transaction, signedBody.transaction, world.user.publicKey.toBase58(), world.userUsdc.toBase58(), world.recipientUsdc.toBase58()]) {
-    assert.ok(!text.includes(secret), "a log line carries something it must not");
-  }
+  // Nothing that leads to the transaction on chain: no signature, no amount, no address.
+  const text = http.lines.map((entry) => JSON.stringify(entry)).join("\n");
+  const forbidden = [
+    API_KEY, ...Object.values(world.secrets), prepared.transaction, signedBody.transaction, signed.signature,
+    prepared.networkCostMicroUsdc, prepared.platformMicroUsdc, prepared.customerMicroUsdc, world.prepareBody().amountMicroUsdc,
+    ...[world.user.publicKey, world.userUsdc, world.recipientUsdc, world.paymentAccount, world.payoutAccount, world.feePayer.publicKey].map((key) => key.toBase58()),
+  ];
+  for (const secret of forbidden) assert.ok(!text.includes(secret), "a log line carries something it must not");
+  assert.equal((await world.store.getQuote(prepared.quoteId)).signature, signed.signature);
 });
 
 test("refusals over HTTP carry the stable code, a plain message and the right status", async (t) => {
@@ -232,7 +260,8 @@ test("an unknown outcome over HTTP says so and carries the signature when there 
   assert.equal(response.body.error.code, "outcome_unknown");
   assert.match(response.body.signature, /^[1-9A-HJ-NP-Za-km-z]{80,90}$/);
   assert.equal(lastLine(http).outcome, "unknown");
-  assert.equal(lastLine(http).signature, response.body.signature);
+  // The caller gets the signature to settle with; the log does not.
+  assert.ok(!JSON.stringify(http.lines).includes(response.body.signature));
   assert.ok(!JSON.stringify(http.lines).includes("ECONNRESET"));
 });
 

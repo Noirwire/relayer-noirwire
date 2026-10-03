@@ -5,9 +5,9 @@ import { loadConfig } from "../src/config.mjs";
 import { hashApiKey } from "../src/customers.mjs";
 import { createKora } from "../src/kora.mjs";
 import { PYTH_SOL_USD } from "../src/price.mjs";
-import { createRateLimiter } from "../src/ratelimit.mjs";
 import { createGatewayServer } from "../src/server.mjs";
 import { createService } from "../src/service.mjs";
+import { base58Encode } from "../src/units.mjs";
 import { createMemoryStore } from "../src/store/memory.mjs";
 
 // Fakes for the RPC, for Kora and for the price source. No test touches the network: the
@@ -21,6 +21,9 @@ export const PRICE = 150_000_000n;
 export const KORA_FEE = 1_600n;
 /** The moment every test happens at, in seconds. */
 export const NOW = 1_800_000_000;
+
+/** The last block height the fake RPC's blockhash is valid at. */
+export const LAST_VALID_BLOCK_HEIGHT = 1_000;
 
 /** A fake clock starting at NOW. Time moves only when a test moves it. */
 export function fakeClock() {
@@ -77,9 +80,25 @@ export function fakeConn(accounts, options = {}) {
     }),
     getLatestBlockhash: record("getLatestBlockhash", () => {
       if (options.failBlockhash) throw new Error("rpc down");
-      return { blockhash: BLOCKHASH, lastValidBlockHeight: 1_000 };
+      return { blockhash: BLOCKHASH, lastValidBlockHeight: LAST_VALID_BLOCK_HEIGHT };
     }),
-    sendRawTransaction: record("sendRawTransaction", (raw) => (options.onSend ? options.onSend(raw) : "accepted")),
+    // `options.blockHeight` is the finalized height; `options.statuses` maps a signature to
+    // what the chain says of it. A signature that is not in the map was never seen.
+    getBlockHeight: record("getBlockHeight", () => {
+      if (options.failSettlement) throw new Error("rpc down");
+      return options.blockHeight ?? LAST_VALID_BLOCK_HEIGHT - 100;
+    }),
+    getSignatureStatuses: record("getSignatureStatuses", (signatures) => {
+      if (options.failSettlement) throw new Error("rpc down");
+      return { context: { slot: 1 }, value: signatures.map((signature) => options.statuses?.get(signature) ?? null) };
+    }),
+    sendRawTransaction: record("sendRawTransaction", (raw) => {
+      const answer = options.onSend ? options.onSend(raw) : "accepted";
+      // `options.autoLand`: an accepted broadcast is confirmed at once. The first signature
+      // (bytes 1 to 64 of the wire format) is the transaction's id.
+      if (options.autoLand) options.statuses.set(base58Encode(raw.subarray(1, 65)), { slot: 1, confirmations: 1, err: null, confirmationStatus: "confirmed" });
+      return answer;
+    }),
   };
 }
 
@@ -189,7 +208,9 @@ export const API_KEY = "test-api-key-000000000000000000000000";
 /**
  * One customer ("acme", 50 percent markup), its relayer, a user with USDC and a recipient,
  * all wired to fakes. `overrides.customer` changes the customers file entry,
- * `overrides.env` the environment, `overrides.clock` replaces the fake clock.
+ * `overrides.env` the environment, `overrides.clock` replaces the fake clock. The fake
+ * chain confirms every accepted broadcast at once; `world.conn.options.autoLand = false`
+ * leaves a transaction unseen until the test calls `world.land`.
  */
 export function makeWorld(overrides = {}) {
   const world = {
@@ -229,6 +250,9 @@ export function makeWorld(overrides = {}) {
     RPC_URL: "http://rpc.invalid",
     STORE: "memory",
     CUSTOMERS_FILE: "/customers.json",
+    PLATFORM_PAYMENT_OWNERS: world.paymentWallet.publicKey.toBase58(),
+    // The exact cost, so the amounts in the tests are the split's own arithmetic.
+    COST_BUFFER_BPS: "0",
     GATEWAY_HMAC_SECRET_ACME: world.secrets.hmacSecret,
     KORA_API_KEY_ACME: world.secrets.koraApiKey,
     KORA_HMAC_SECRET_ACME: world.secrets.koraHmacSecret,
@@ -245,12 +269,15 @@ export function makeWorld(overrides = {}) {
     [world.user.publicKey.toBase58(), { owner: SystemProgram.programId, data: Buffer.alloc(0), lamports: 0 }],
     [PYTH_SOL_USD.toBase58(), pythAccount()],
   ]);
-  world.conn = fakeConn(world.accounts);
+  world.statuses = new Map();
+  world.conn = fakeConn(world.accounts, { statuses: world.statuses, autoLand: true });
+  /** What the chain says of a transaction: landed unless told otherwise. */
+  world.land = (signature, { err = null, confirmationStatus = "confirmed" } = {}) => world.statuses.set(signature, { slot: 1, confirmations: 1, err, confirmationStatus });
   world.koraState = { fee: KORA_FEE };
   world.priceState = { price: PRICE };
   world.fetchFn = fakeKora(world, world.koraState);
   world.kora = createKora({ fetchFn: world.fetchFn, clock: world.clock, timeoutMs: 40, secretsFor: world.cfg.customers.secretsFor });
-  world.store = createMemoryStore();
+  world.store = createMemoryStore({ retentionMs: world.cfg.retentionMs });
   world.deps = { conn: world.conn, kora: world.kora, priceSource: fakePrice(world.priceState), store: world.store, clock: world.clock };
   world.service = createService(world.deps, world.cfg);
 
@@ -288,7 +315,7 @@ export async function listen(world, port = 0, onLine = () => {}) {
   const server = createGatewayServer({
     service: world.service,
     customers: world.cfg.customers,
-    rateLimiter: createRateLimiter(world.clock),
+    store: world.store,
     clock: world.clock,
     log: (line) => {
       lines.push(line);
