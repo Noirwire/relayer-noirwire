@@ -4,6 +4,10 @@ import { defineRailway, github, preserve, project, service } from "railway/iac";
 // ../deploy.md). Secrets and the public keys are never written here: they are set once with
 // `railway variable set`, and `preserve()` tells Railway to keep them.
 
+// This repository manages one slice of the Railway project it shares with the API, so
+// applying this file never touches a service another repository declared.
+export const partial = "relayer";
+
 // How many relayers to run. Each replica is one Kora service with its OWN fee payer key and
 // one refill service for that fee payer. All of them share the same payment wallet.
 // Replica 1 is `kora` and `refill`; replica 2 is `kora-2` and `refill-2`; and so on.
