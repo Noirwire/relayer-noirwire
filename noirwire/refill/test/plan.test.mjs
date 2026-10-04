@@ -19,16 +19,14 @@ test("a full fee payer takes nothing, however much the wallet holds", () => {
   assert.equal(planTransfer({ feePayerLamports: sol(0.3), walletLamports: sol(5) }, cfg), 0n);
 });
 
-test("half-finished run: the SOL above the reserve is transferred, and that is all", () => {
+test("half-finished run: the transfer tops the fee payer up to its target and no further, however much the wallet holds", () => {
   // A swap landed (0.09 SOL arrived) and the run died before the transfer.
   const state = { feePayerLamports: sol(0.02), walletLamports: sol(0.1) };
   assert.equal(planTransfer(state, cfg), sol(0.08));
+  // The wallet holding far more than is needed does not raise the transfer past the target.
+  assert.equal(planTransfer({ ...state, walletLamports: sol(3) }, cfg), sol(0.08));
   const after = { feePayerLamports: sol(0.1), walletLamports: sol(0.02) };
   assert.deepEqual(swap(after), { action: "none" });
-});
-
-test("the transfer never takes the fee payer above the target", () => {
-  assert.equal(planTransfer({ feePayerLamports: sol(0.02), walletLamports: sol(3) }, cfg), sol(0.08));
 });
 
 test("the transfer never takes the wallet below its reserve", () => {
