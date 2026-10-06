@@ -7,7 +7,7 @@
 # account already exists at signing. See "Stable or pre-release" in ../README.md.
 [kora]
 rate_limit = 20
-payment_address = "REPLACE_WITH_PAYMENT_WALLET_PUBKEY"
+payment_address = "3QTwdXo2wUg7KsXh4T7LPsg1Rh6krMdq69igjnko5RFw"
 
 [kora.auth]
 max_timestamp_age = 60
