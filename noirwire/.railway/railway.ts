@@ -42,16 +42,16 @@ const kora = (name: string) =>
     },
   });
 
-// The refill job for one fee payer: runs once every ten minutes and exits. Never restarted:
+// The refill job for one fee payer: runs once an hour and exits. Never restarted:
 // a run that ends with a non-zero code must be looked at, not repeated. Jobs that share the
 // payment wallet must not run at the same minute, so each replica's schedule is shifted
-// (replica 1 at :00, :10, ...; replica 2 at :05, :15, ...; Railway needs 5 minutes between runs).
+// (replica 1 at :00, replica 2 at :05, ...; Railway needs 5 minutes between runs).
 const refill = (name: string, minute: number) =>
   service(name, {
     source: source("/noirwire/refill"),
     start: "node src/main.mjs",
     deploy: {
-      cronSchedule: `${minute}-59/10 * * * *`,
+      cronSchedule: `${minute} * * * *`,
       restartPolicyType: "NEVER",
     },
     env: {

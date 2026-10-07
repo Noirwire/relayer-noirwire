@@ -150,7 +150,7 @@ variable being deleted:
 | `kora` | restart policy | on failure, 10 retries | Settings, Deploy, Restart Policy |
 | `kora` | variables | `PORT=8080`, `RUST_LOG=warn` | Variables |
 | `refill` | start command | `node src/main.mjs` | Settings, Deploy, Custom Start Command |
-| `refill` | cron schedule | `*/10 * * * *` (UTC) | Settings, Cron Schedule |
+| `refill` | cron schedule | `0 * * * *` (UTC) | Settings, Cron Schedule |
 | `refill` | restart policy | never | Settings, Deploy, Restart Policy |
 | `refill` | variables | the eight tunables (`MAX_USDC_PER_SOL` is yours, from step 5) | Variables |
 

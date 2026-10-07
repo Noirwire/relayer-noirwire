@@ -14,7 +14,7 @@ NoirWire's own server.
 - **`kora/`**: [Kora](https://github.com/solana-foundation/kora), the Solana Foundation fee
   relayer, as a pinned Docker image plus its configuration. It co-signs a user's transaction
   as fee payer after checking that the transaction pays it in USDC.
-- **`refill/`**: a job that runs every ten minutes, turns part of the collected USDC back into
+- **`refill/`**: a job that runs once an hour, turns part of the collected USDC back into
   SOL and tops the fee payer up. Without it the fee payer runs dry and someone has to send it
   SOL by hand.
 
@@ -371,7 +371,7 @@ parse. Its error names the variable and the rule, never the value.
 
 `deploy.md` has the full sequence. In short: Kora is a Railway web service built from `kora/`
 with a public domain and the healthcheck `/liveness`; the refill job is a Railway cron service
-built from `refill/`, schedule every ten minutes, restart policy "never". Both are described
+built from `refill/`, schedule once an hour, restart policy "never". Both are described
 in `.railway/railway.ts`.
 
 ## More than one relayer

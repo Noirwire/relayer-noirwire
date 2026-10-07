@@ -4,7 +4,7 @@ import { ceilDiv, min } from "./units.mjs";
 
 /**
  * A transfer smaller than this is not worth its 5,000 lamport fee. Without it, a payment
- * wallet holding spare SOL would pay a fee every ten minutes to replace the 10,000 lamports
+ * wallet holding spare SOL would pay a fee on every run to replace the 10,000 lamports
  * the fee payer spent on one relayed transaction.
  */
 export const MIN_TRANSFER_LAMPORTS = 1_000_000n;

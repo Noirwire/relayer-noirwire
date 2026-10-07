@@ -7,7 +7,7 @@ import { readReferencePrice } from "./price.mjs";
 import { base58Encode, formatUnits, SOL_DECIMALS, USDC_DECIMALS } from "./units.mjs";
 
 /**
- * The whole run must end before the next scheduled one starts (every 10 minutes), so that
+ * The whole run must end before the next scheduled one starts (an hour later), so that
  * two runs never work on the same balances. No leg is started unless it can finish its own
  * bounded wait inside this.
  */
