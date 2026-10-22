@@ -7,7 +7,7 @@
 # account already exists at signing. See "Stable or pre-release" in ../README.md.
 [kora]
 rate_limit = 20
-payment_address = "3QTwdXo2wUg7KsXh4T7LPsg1Rh6krMdq69igjnko5RFw"
+payment_address = "M4chQe2udcitUA7SwA4sRaCe9Tk3dbcXgrjpXE9kQhj"
 
 [kora.auth]
 max_timestamp_age = 60
@@ -57,8 +57,19 @@ allow_allocate = false
 
 # Underscore on purpose: v2.0.5 silently ignores the spelling [validation.token2022].
 [validation.token_2022]
-blocked_mint_extensions = ["transfer_fee_config", "non_transferable", "interest_bearing_config", "mint_close_authority", "confidential_mint_burn"]
-blocked_account_extensions = ["non_transferable_account", "confidential_transfer_account", "memo_transfer", "cpi_guard"]
+blocked_mint_extensions = [
+    "transfer_fee_config",
+    "non_transferable",
+    "interest_bearing_config",
+    "mint_close_authority",
+    "confidential_mint_burn",
+]
+blocked_account_extensions = [
+    "non_transferable_account",
+    "confidential_transfer_account",
+    "memo_transfer",
+    "cpi_guard",
+]
 
 [metrics]
 enabled = true
