@@ -21,14 +21,38 @@ NoirWire's own server.
 Everything here lives in this one folder; all paths below are relative to it.
 
 ```
-kora/        Dockerfile, kora.toml, signers.toml (v2.2.0-beta.8, the default)
+kora/        Dockerfile, kora.toml, signers.template.toml (v2.2.0-beta.8, the default)
              Dockerfile.stable, kora.stable.toml (v2.0.5, the audited alternative)
+             The image holds only the nonsecret signers.template.toml (it names KORA_PRIVATE_KEY, no
+             value). A real signers.toml is never built into an image (.dockerignore excludes it);
+             for the local validation commands in deploy.md keep your own copy beside the config,
+             and mount it read-only (`-v "$PWD":/config:ro`) at runtime. Both Dockerfiles refuse
+             to start when KORA_API_KEY, KORA_HMAC_SECRET or KORA_PRIVATE_KEY is empty.
 refill/      the refill job (plain Node, two dependencies) and its tests
 scripts/     check-deploy.sh (a deployed Kora), check-upstream.sh (pinned image against upstream releases)
 .railway/    railway.ts: both Railway services as code
 deploy.md    the deployment sequence, command by command
 docs/        updating-from-upstream.md, and the record of the fork test this is built on
 ```
+
+## Before rollout
+
+Do these before the template image replaces a running deployment:
+
+1. **Compare the signer setup.** The image holds only `kora/signers.template.toml`: one memory
+   signer named `fee_payer` reading `KORA_PRIVATE_KEY`. Compare it with what is deployed today:
+   signer names, public keys, selection strategy and payment address (`kora.toml`
+   `payment_address`). The fee payer public key and payment address must equal the keys the
+   caller pins. If they differ, or the deployment uses another variable name, several signers or a
+   hardware-backed signer, do not ship the template as is.
+2. **Alternate signer setup.** An alternate configuration is mounted read-only at
+   `/app/signers.toml` at runtime; it is never built into an image.
+3. **Mounted file permissions.** The root-stack Dockerfile runs as uid 10001, so a mounted
+   `signers.toml` must be readable by it: `sudo chown 10001 signers.toml && chmod 0400 signers.toml`.
+   Smoke check: `docker compose run --rm --no-deps kora cat /app/signers.toml >/dev/null` must
+   print nothing; "Permission denied" means the mount is unreadable and Kora will not start.
+4. **Redis password (root stack).** `REDIS_PASSWORD` is placed in a `redis://:<password>@redis`
+   URL, so it must be URL-safe: generate it with `openssl rand -hex 24`.
 
 ## The operating rule
 
