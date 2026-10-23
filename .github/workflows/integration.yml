@@ -45,6 +45,14 @@ jobs:
       cache-key: "rust-dev"
       artifact-name: "rust-binaries"
 
+  rust-skipped:
+    name: Rust integration skipped (Doppler not set up)
+    if: vars.DOPPLER_SERVICE_IDENTITY_ID == ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Say the Rust integration suites did not run
+        run: echo "::warning::DOPPLER_SERVICE_IDENTITY_ID is not set, so the Rust integration suites did not run on this change."
+
   rust:
     name: Rust
     needs: build
