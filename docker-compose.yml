@@ -6,12 +6,16 @@ services:
       - redis_data:/data
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
     restart: unless-stopped
+    # The password is written to an auth include file on tmpfs at start, so it never appears in
+    # redis-server's argument list.
+    tmpfs:
+      - /tmp
     command:
       - sh
       - -c
-      - 'exec redis-server /usr/local/etc/redis/redis.conf --requirepass "$$REDIS_PASSWORD"'
+      - 'umask 077; printf "requirepass %s\n" "$$REDIS_PASSWORD" > /tmp/redis-auth.conf; exec redis-server /usr/local/etc/redis/redis.conf --include /tmp/redis-auth.conf'
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?set REDIS_PASSWORD in .env, URL-safe only: generate with openssl rand -hex 24}
 
   kora:
     build:
@@ -19,6 +23,10 @@ services:
       dockerfile: Dockerfile
     ports:
       - "127.0.0.1:8080:8080"
+    # The image runs as uid 10001, so the mounted signers.toml must be readable by it:
+    #   sudo chown 10001 signers.toml && chmod 0400 signers.toml
+    # Smoke check: docker compose run --rm --no-deps kora cat /app/signers.toml >/dev/null
+    # (prints nothing when the mount is readable, "Permission denied" when it is not).
     volumes:
       - ./kora.toml:/app/kora.toml:ro
       - ./signers.toml:/app/signers.toml:ro

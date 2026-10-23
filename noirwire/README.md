@@ -35,6 +35,25 @@ deploy.md    the deployment sequence, command by command
 docs/        updating-from-upstream.md, and the record of the fork test this is built on
 ```
 
+## Before rollout
+
+Do these before the template image replaces a running deployment:
+
+1. **Compare the signer setup.** The image holds only `kora/signers.template.toml`: one memory
+   signer named `fee_payer` reading `KORA_PRIVATE_KEY`. Compare it with what is deployed today:
+   signer names, public keys, selection strategy and payment address (`kora.toml`
+   `payment_address`). The fee payer public key and payment address must equal the keys the
+   caller pins. If they differ, or the deployment uses another variable name, several signers or a
+   hardware-backed signer, do not ship the template as is.
+2. **Alternate signer setup.** An alternate configuration is mounted read-only at
+   `/app/signers.toml` at runtime; it is never built into an image.
+3. **Mounted file permissions.** The root-stack Dockerfile runs as uid 10001, so a mounted
+   `signers.toml` must be readable by it: `sudo chown 10001 signers.toml && chmod 0400 signers.toml`.
+   Smoke check: `docker compose run --rm --no-deps kora cat /app/signers.toml >/dev/null` must
+   print nothing; "Permission denied" means the mount is unreadable and Kora will not start.
+4. **Redis password (root stack).** `REDIS_PASSWORD` is placed in a `redis://:<password>@redis`
+   URL, so it must be URL-safe: generate it with `openssl rand -hex 24`.
+
 ## The operating rule
 
 > **WARNING. This Kora is ONLY safe behind a caller that verifies the whole transaction and
