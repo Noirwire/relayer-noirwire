@@ -21,8 +21,13 @@ NoirWire's own server.
 Everything here lives in this one folder; all paths below are relative to it.
 
 ```
-kora/        Dockerfile, kora.toml, signers.toml (v2.2.0-beta.8, the default)
+kora/        Dockerfile, kora.toml, signers.template.toml (v2.2.0-beta.8, the default)
              Dockerfile.stable, kora.stable.toml (v2.0.5, the audited alternative)
+             The image holds only the nonsecret signers.template.toml (it names KORA_PRIVATE_KEY, no
+             value). A real signers.toml is never built into an image (.dockerignore excludes it);
+             for the local validation commands in deploy.md keep your own copy beside the config,
+             and mount it read-only (`-v "$PWD":/config:ro`) at runtime. Both Dockerfiles refuse
+             to start when KORA_API_KEY, KORA_HMAC_SECRET or KORA_PRIVATE_KEY is empty.
 refill/      the refill job (plain Node, two dependencies) and its tests
 scripts/     check-deploy.sh (a deployed Kora), check-upstream.sh (pinned image against upstream releases)
 .railway/    railway.ts: both Railway services as code

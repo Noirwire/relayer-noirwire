@@ -41,6 +41,7 @@ sdks/
 .env
 .env.*
 kora.toml
+signers.toml
 prometheus.yml
 
 # Docker

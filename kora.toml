@@ -1,3 +1,7 @@
+# SAMPLE FOR LOCAL DEVELOPMENT ONLY. NOT A PRODUCTION CONFIGURATION.
+# It enables broad signing authority, mock pricing and wildcard CORS. Never run it with a funded
+# signer on a reachable host. Set KORA_API_KEY (docker-compose.yml refuses to start without it)
+# and, for any real deployment, write your own narrowed config instead of this one.
 [kora]
 rate_limit = 100
 
@@ -7,6 +11,8 @@ rate_limit = 100
 cors_allow_origins = ["*"]
 
 [kora.auth]
+# Credentials are read from the KORA_API_KEY and KORA_HMAC_SECRET environment variables.
+# Leaving all auth unset makes the server accept unauthenticated signing requests.
 # Optional: API key for simple authentication
 # api_key = "your-api-key"  # Deprecated: use api_keys array instead
 # api_keys = ["key-1", "key-2"]  # Supports multiple API keys

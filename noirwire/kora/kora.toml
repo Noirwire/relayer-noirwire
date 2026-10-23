@@ -60,8 +60,10 @@ allow_allocate = false
 
 [validation.token_2022]
 # Required for the tracker mints, whose transfer-hook authority is set though no hook program
-# is: the default policy refuses them. A hook program would also have to be on
-# allowed_programs for Kora to sign a transaction that reaches it.
+# is: the default policy refuses them, and so does "deny_mutable_for_delayed_signing", which
+# would refuse them on sign_transaction, the only signing method enabled above. A hook program
+# would also have to be on allowed_programs for Kora to sign a transaction that reaches it.
+# Before launch, confirm each tracker mint's hook authority and program are as expected.
 transfer_hook_policy = "allow_all"
 blocked_mint_extensions = [
     "transfer_fee_config",

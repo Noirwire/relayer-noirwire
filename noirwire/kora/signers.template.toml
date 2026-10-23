@@ -1,0 +1,13 @@
+# Nonsecret signer template baked into the image. It names the environment variable that holds
+# the fee payer key; the key itself is set as KORA_PRIVATE_KEY in the service's variables.
+# The real signers.toml is never copied into an image: if you need a different signer setup,
+# mount it read-only at /app/signers.toml at runtime.
+
+[signer_pool]
+strategy = "round_robin"
+
+[[signers]]
+name = "fee_payer"
+type = "memory"
+private_key_env = "KORA_PRIVATE_KEY"
+weight = 1

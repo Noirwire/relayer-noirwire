@@ -21,6 +21,10 @@ RUN cargo build --release --bin kora
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /usr/src/app/target/release/kora /usr/local/bin/
+RUN useradd --system --no-create-home --uid 10001 --shell /usr/sbin/nologin kora \
+    && mkdir -p /app && chown kora:kora /app
+WORKDIR /app
+USER 10001:10001
 
 EXPOSE 8080
 CMD ["kora"]
