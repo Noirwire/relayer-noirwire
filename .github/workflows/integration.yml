@@ -48,6 +48,9 @@ jobs:
   rust:
     name: Rust
     needs: build
+    # These suites read their test keys from Doppler. Without the identity variable set
+    # they cannot run, so they are skipped instead of failing every pull request.
+    if: vars.DOPPLER_SERVICE_IDENTITY_ID != ''
     permissions:
       contents: read
       id-token: write
