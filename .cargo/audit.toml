@@ -8,6 +8,14 @@ ignore = [
     "RUSTSEC-2026-0098",
     # rustls-webpki 0.101.x is pinned by the transitive rustls 0.21 TLS stack.
     "RUSTSEC-2026-0099",
+    # rustls 0.21.12 and rustls-webpki 0.101.7 are pinned by jsonrpsee 0.16 (hyper-rustls 0.24).
+    # The local RPC server binds plain HTTP and no jsonrpsee HTTP or WebSocket client is
+    # constructed in crates/lib or crates/cli. Drop these once jsonrpsee moves off 0.16.
+    "RUSTSEC-2026-0349",
+    "RUSTSEC-2026-0346",
+    "RUSTSEC-2026-0382",
+    # webpki-roots 0.25.4 comes from the same jsonrpsee 0.16 client stack.
+    "RUSTSEC-2026-0381",
     # rkyv is an inactive optional dependency of rust_decimal; Kora does not enable its
     # rkyv features.
     "RUSTSEC-2026-0235",
