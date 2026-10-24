@@ -1,7 +1,7 @@
 // A wall-clock bound on every RPC call. web3.js has none of its own, and one request that
 // never answers would otherwise hold the run (and the next scheduled one) forever.
 
-export const RPC_TIMEOUT_MS = 20_000;
+const RPC_TIMEOUT_MS = 20_000;
 
 export class RpcTimeout extends Error {}
 

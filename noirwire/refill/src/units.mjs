@@ -3,6 +3,7 @@
 
 export const SOL_DECIMALS = 9;
 export const USDC_DECIMALS = 6;
+export const LAMPORTS_PER_SOL = 10n ** BigInt(SOL_DECIMALS);
 
 /** "0.03" with 9 decimals -> 30000000n. Throws on anything that is not a plain decimal. */
 export function parseUnits(text, decimals) {

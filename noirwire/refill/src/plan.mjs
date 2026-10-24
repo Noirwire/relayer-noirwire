@@ -1,4 +1,4 @@
-import { ceilDiv, min } from "./units.mjs";
+import { ceilDiv, LAMPORTS_PER_SOL, min } from "./units.mjs";
 
 // The decisions, with no network in them: given balances, what should move.
 
@@ -7,7 +7,7 @@ import { ceilDiv, min } from "./units.mjs";
  * wallet holding spare SOL would pay a fee on every run to replace the 10,000 lamports
  * the fee payer spent on one relayed transaction.
  */
-export const MIN_TRANSFER_LAMPORTS = 1_000_000n;
+const MIN_TRANSFER_LAMPORTS = 1_000_000n;
 
 /**
  * The most SOL this job will ever move into the fee payer in any 24 hours, whatever the
@@ -28,9 +28,7 @@ export function withinDailyCeiling(lamports, movedLast24h) {
 }
 
 /** The smallest swap worth asking for. Market makers quoted USDC to SOL from 0.5 USDC in testing. */
-export const MIN_SWAP_USDC = 500_000n;
-
-const LAMPORTS_PER_SOL = 1_000_000_000n;
+const MIN_SWAP_USDC = 500_000n;
 
 /**
  * Lamports to move from the payment wallet to the fee payer right now, or 0n.

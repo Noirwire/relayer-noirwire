@@ -1,13 +1,10 @@
-import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { SystemInstruction, SystemProgram, Transaction } from "@solana/web3.js";
 import { Failed, Refusal, UnknownOutcome } from "./errors.mjs";
-import { USDC } from "./guard.mjs";
-import { base58Encode } from "./units.mjs";
+import { USDC, usdcAccountOf } from "./guard.mjs";
+import { base58Encode, LAMPORTS_PER_SOL } from "./units.mjs";
 
 // What the job reads from and writes to the chain itself (the swap goes through Jupiter).
 // History is read at "confirmed" throughout, so every counter sees the same ledger.
-
-export const usdcAccountOf = (wallet) => getAssociatedTokenAddressSync(USDC, wallet, true);
 
 export async function readBalances(conn, cfg) {
   const wallet = cfg.wallet.publicKey;
@@ -149,7 +146,7 @@ export async function walletLast24h(conn, cfg, nowSeconds, ownSignatures = new S
 }
 
 /** How far back the fee payer's own transactions are reconciled: one cron interval and a half. */
-export const WATCH_WINDOW_SECONDS = 15 * 60;
+const WATCH_WINDOW_SECONDS = 15 * 60;
 /** At most this many pages (3,000 transactions naming the fee payer) are read for the window. */
 const WATCH_MAX_PAGES = 3;
 /**
@@ -157,7 +154,7 @@ const WATCH_MAX_PAGES = 3;
  * before the job stops refilling: five failed plain transactions. One account creation that
  * was not paid for (2,039,280 lamports) is far above it.
  */
-export const UNCOVERED_TOLERANCE_LAMPORTS = 50_000n;
+const UNCOVERED_TOLERANCE_LAMPORTS = 50_000n;
 
 /**
  * Reconciles what the fee payer spent against what the payment wallet received, transaction
@@ -215,7 +212,7 @@ export async function reconcileFeePayer(conn, cfg, nowSeconds, microUsdcPerSol) 
     totals.lamportsSpent += spent;
     // What the SOL spent is worth in USDC. Without a price, anything short of "no SOL
     // spent" cannot be judged, which is handled below.
-    const worth = microUsdcPerSol ? (spent * microUsdcPerSol) / 1_000_000_000n : null;
+    const worth = microUsdcPerSol ? (spent * microUsdcPerSol) / LAMPORTS_PER_SOL : null;
     if (received <= 0n || (worth !== null && received < worth)) {
       totals.underpaid += 1;
       totals.lamportsUncovered += spent;
