@@ -48,9 +48,13 @@ else
     '{jsonrpc: "2.0", id: 1, method: "getMultipleAccounts",
       params: [$mints, {encoding: "jsonParsed", commitment: "finalized"}]}')" ||
     die "could not build the RPC request"
+  # The URL may carry a provider key, so a failure names at most the host.
+  rpc_host="${rpc_url#*://}"
+  rpc_host="${rpc_host%%[/?#]*}"
+  rpc_host="${rpc_host##*@}"
   response="$(curl --silent --show-error --fail --max-time 30 --retry 2 \
     -H 'Content-Type: application/json' -d "$request" "$rpc_url")" ||
-    die "the RPC request failed ($rpc_url)"
+    die "the RPC request failed (host: ${rpc_host})"
 fi
 
 if ! jq -e . >/dev/null 2>&1 <<<"$response"; then
@@ -84,10 +88,14 @@ problems="$(jq -r --argjson mints "$mints_json" \
       | if . == null then
           "FAIL  \($mint)  no transferHook extension"
         else
-          (if .state.authority != $authority then
+          (if (.state | type) != "object" or (.state | has("authority") | not) then
+             "FAIL  \($mint)  hook state has no authority"
+           elif .state.authority != $authority then
              "FAIL  \($mint)  hook authority changed to \(.state.authority | tostring)"
            else empty end),
-          (if .state.programId != null then
+          (if (.state | type) != "object" or (.state | has("programId") | not) then
+             "FAIL  \($mint)  hook state has no programId field"
+           elif .state.programId != null then
              "FAIL  \($mint)  hook program is set: \(.state.programId | tostring)"
            else empty end)
         end
