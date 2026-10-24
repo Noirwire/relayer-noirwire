@@ -8,18 +8,13 @@
 # (Turnkey, Dfns, Openfort, CDP, KMS and the rest) is configured, because those are the code
 # paths that use the affected P-256 and JWT crypto.
 #
-# The schema is simple (an array of [[signers]] tables, each with a `type = "..."` key), so
-# the file is read line by line. A type line passes only when it is exactly `type = "memory"`
-# or `type = 'memory'` with an optional trailing comment; any other spelling fails, which is
-# the safe direction.
-# Only PASS or FAIL and signer numbers are printed, never a value or any other text from the
-# file, so nothing secret can leak into CI logs.
+# The file is parsed as TOML (Python's standard tomllib, 3.11 or later), so every spelling
+# Kora accepts is read the way Kora reads it. Every entry of the top-level `signers` array
+# must be a table whose `type` is exactly "memory". Only PASS or FAIL and signer numbers are
+# printed, never a value, a parser message or any other text from the file, so nothing
+# secret can leak into CI logs.
 
 set -u
-
-LOCAL_TYPE="memory"
-TYPE_KEY='^type[[:space:]]*='
-LOCAL_TYPE_LINE="^type[[:space:]]*=[[:space:]]*(\"$LOCAL_TYPE\"|'$LOCAL_TYPE')[[:space:]]*(#.*)?$"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 file="${1:-$script_dir/../kora/signers.toml}"
@@ -29,57 +24,36 @@ if [ ! -f "$file" ]; then
   exit 1
 fi
 
-signers=0
-bad=0
-in_signer=0
-has_type=0
-untyped=0
+python3 -I -c '
+import sys
 
-close_signer() {
-  if [ "$in_signer" -eq 1 ] && [ "$has_type" -eq 0 ]; then
-    untyped=$((untyped + 1))
-  fi
-}
+try:
+    import tomllib
+except ImportError:
+    print("FAIL  python 3.11 or later is needed to parse the signers file")
+    sys.exit(1)
 
-while IFS= read -r line || [ -n "$line" ]; do
-  line="${line#"${line%%[![:space:]]*}"}"
-  line="${line%"${line##*[![:space:]]}"}"
-  header="${line%%#*}"
-  header="${header%"${header##*[![:space:]]}"}"
-  case "$header" in
-    "[[signers]]")
-      close_signer
-      in_signer=1
-      has_type=0
-      signers=$((signers + 1))
-      continue
-      ;;
-    "["*)
-      close_signer
-      in_signer=0
-      continue
-      ;;
-  esac
-  if [ "$in_signer" -eq 1 ] && [[ "$line" =~ $TYPE_KEY ]]; then
-    has_type=1
-    if ! [[ "$line" =~ $LOCAL_TYPE_LINE ]]; then
-      echo "FAIL  signer $signers is not type \"$LOCAL_TYPE\""
-      bad=$((bad + 1))
-    fi
-  fi
-done <"$file"
-close_signer
+LOCAL_TYPE = "memory"
 
-if [ "$signers" -eq 0 ]; then
-  echo "FAIL  no signers defined"
-  exit 1
-fi
-if [ "$untyped" -gt 0 ]; then
-  echo "FAIL  $untyped signer(s) without a type"
-  exit 1
-fi
-if [ "$bad" -gt 0 ]; then
-  exit 1
-fi
+try:
+    with open(sys.argv[1], "rb") as handle:
+        config = tomllib.load(handle)
+except Exception:
+    print("FAIL  the signers file is not valid TOML")
+    sys.exit(1)
 
-echo "PASS  $signers signer(s), all type \"$LOCAL_TYPE\""
+signers = config.get("signers")
+if not isinstance(signers, list) or not signers:
+    print("FAIL  no signers defined")
+    sys.exit(1)
+
+bad = 0
+for number, signer in enumerate(signers, start=1):
+    if not isinstance(signer, dict) or signer.get("type") != LOCAL_TYPE:
+        print(f"FAIL  signer {number} is not type \"{LOCAL_TYPE}\"")
+        bad += 1
+
+if bad:
+    sys.exit(1)
+print(f"PASS  {len(signers)} signer(s), all type \"{LOCAL_TYPE}\"")
+' "$file"
