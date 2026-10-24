@@ -17,6 +17,9 @@ on:
   schedule:
     # Report-only: tells us when upstream has a new Kora release. Never fails the run.
     - cron: "17 8 * * 1"
+    # Daily: re-reads the tracker mints from chain. Only the tracker-hooks job runs for this
+    # cron; every other job is gated on the schedule string (see the jobs' `if:` lines).
+    - cron: "41 6 * * *"
 
 permissions:
   contents: read
@@ -98,9 +101,24 @@ jobs:
 
   upstream-check:
     name: weekly upstream release check (report only)
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' && github.event.schedule == '17 8 * * 1'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - run: noirwire/scripts/check-upstream.sh
         continue-on-error: true
+
+  tracker-hooks:
+    name: tracker mints still have no transfer hook program
+    # Runs on push and pull request (tests only) and on the daily cron (real check). The weekly
+    # cron is left to upstream-check.
+    if: github.event_name != 'schedule' || github.event.schedule == '41 6 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - run: noirwire/scripts/test-check-tracker-hooks.sh
+      # Deliberately not continue-on-error: a failure here means the relayer's
+      # transfer_hook_policy no longer matches chain, and the failed run emails the repo owner.
+      - name: check the tracker mints on chain
+        if: github.event_name == 'schedule'
+        run: noirwire/scripts/check-tracker-hooks.sh

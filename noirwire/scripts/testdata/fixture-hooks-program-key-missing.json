@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":1,"result":{"context":{"slot":1},"value":[
+{"owner":"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb","data":{"parsed":{"type":"mint","info":{"extensions":[{"extension":"transferHook","state":{"authority":"5aMNNLQJwAEeoemTEMkv5NVjqKwvvefRYCQ5Z67HFvEq","programId":null}}]}},"program":"spl-token-2022"}},
+{"owner":"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb","data":{"parsed":{"type":"mint","info":{"extensions":[{"extension":"transferHook","state":{"authority":"5aMNNLQJwAEeoemTEMkv5NVjqKwvvefRYCQ5Z67HFvEq"}}]}},"program":"spl-token-2022"}},
+{"owner":"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb","data":{"parsed":{"type":"mint","info":{"extensions":[{"extension":"transferHook","state":{"authority":"5aMNNLQJwAEeoemTEMkv5NVjqKwvvefRYCQ5Z67HFvEq","programId":null}}]}},"program":"spl-token-2022"}}
+]}}
