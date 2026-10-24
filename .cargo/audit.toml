@@ -30,4 +30,10 @@ ignore = [
     # idna 0.1.5 comes from jsonrpc-core-client, reached only by the tests crate via
     # surfpool-sdk.
     "RUSTSEC-2024-0421",
+    # crypto-bigint 0.5.5 comes from elliptic-curve 0.13. It reaches the build through the
+    # custodial signers that solana-keychain compiles in (p256, for their P-256 API
+    # credentials) and through k256 in solana-secp256k1-recover, which is unused. The
+    # deployment signs with a local ed25519 key. The fix is crypto-bigint >=0.7.6, which
+    # needs elliptic-curve to move to 0.14. Remove this entry once that lands.
+    "RUSTSEC-2026-0387",
 ]
