@@ -49,10 +49,21 @@ else
       params: [$mints, {encoding: "jsonParsed", commitment: "finalized"}]}')" ||
     die "could not build the RPC request"
   # The URL may carry a provider key, and curl's own error text names the host, so curl's
-  # stderr is discarded and a failure prints a fixed message with no part of the URL.
-  response="$(curl --silent --fail --max-time 30 --retry 2 \
-    -H 'Content-Type: application/json' -d "$request" "$rpc_url" 2>/dev/null)" ||
-    die "the RPC request failed"
+  # stderr is discarded. The failure message carries only curl's exit code and the HTTP status
+  # (the status is written after the body and split off here), never the URL or the body.
+  rpc_output="$(curl --silent --max-time 30 --retry 2 \
+    -H 'Content-Type: application/json' -d "$request" --write-out '\n%{http_code}' "$rpc_url" 2>/dev/null)"
+  curl_exit=$?
+  http_status="${rpc_output##*$'\n'}"
+  response="${rpc_output%$'\n'*}"
+  case "$http_status" in
+    [0-9][0-9][0-9]) ;;
+    *) http_status=000 ;;
+  esac
+  case "$curl_exit:$http_status" in
+    0:2[0-9][0-9]) ;;
+    *) die "the RPC request failed (curl exit $curl_exit, HTTP $http_status)" ;;
+  esac
 fi
 
 if ! jq -e . >/dev/null 2>&1 <<<"$response"; then
@@ -60,7 +71,8 @@ if ! jq -e . >/dev/null 2>&1 <<<"$response"; then
 fi
 
 if jq -e 'type == "object" and has("error")' >/dev/null 2>&1 <<<"$response"; then
-  die "the RPC returned an error: $(jq -c '.error' <<<"$response" | cut -c1-300)"
+  error_code="$(jq -r 'if (.error.code | type) == "number" and ((.error.code | tostring) | test("^-?[0-9]+$")) then (.error.code | tostring) else "unknown" end' <<<"$response" 2>/dev/null)"
+  die "the RPC returned an error (code ${error_code:-unknown})"
 fi
 
 if ! jq -e --argjson count "$count" \
