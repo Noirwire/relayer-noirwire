@@ -1,0 +1,12 @@
+# Synthetic fixture: a memory signer, then a remote signer under a spaced, quoted header.
+[signer_pool]
+strategy = "round_robin"
+
+[[signers]]
+name = "fixture_memory"
+type = "memory"
+private_key_env = "FIXTURE_KEY"
+
+[[ "signers" ]]
+name = "fixture_remote"
+"type" = "turnkey"

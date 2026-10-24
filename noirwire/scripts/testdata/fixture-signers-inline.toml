@@ -1,0 +1,5 @@
+# Synthetic fixture: signers written as an inline array, one of them remote.
+signers = [
+  { name = "fixture_memory", type = "memory", private_key_env = "FIXTURE_KEY" },
+  { name = "fixture_remote", type = "turnkey" },
+]

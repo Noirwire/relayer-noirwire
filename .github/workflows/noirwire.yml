@@ -6,10 +6,14 @@ on:
     paths:
       - "noirwire/**"
       - ".github/workflows/noirwire.yml"
+      - ".cargo/audit.toml"
+      - "Cargo.lock"
   pull_request:
     paths:
       - "noirwire/**"
       - ".github/workflows/noirwire.yml"
+      - ".cargo/audit.toml"
+      - "Cargo.lock"
   schedule:
     # Report-only: tells us when upstream has a new Kora release. Never fails the run.
     - cron: "17 8 * * 1"
@@ -82,6 +86,15 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       # ubuntu-latest runners carry shellcheck preinstalled; no action or extra dependency needed.
       - run: shellcheck noirwire/scripts/*.sh
+
+  signers-local:
+    name: signers are local keys only
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - run: noirwire/scripts/test-check-signers-local.sh
+      - run: noirwire/scripts/check-signers-local.sh noirwire/kora/signers.toml
 
   upstream-check:
     name: weekly upstream release check (report only)
