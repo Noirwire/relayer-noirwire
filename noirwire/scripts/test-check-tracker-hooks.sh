@@ -32,7 +32,20 @@ expect "a missing account fails and names the mint" 1 fixture-hooks-missing.json
 expect "a mint without a transferHook extension fails and names the mint" 1 fixture-hooks-no-extension.json MintBbbb
 expect "a hook state without a programId key fails and names the mint" 1 fixture-hooks-program-key-missing.json MintBbbb
 expect "a hook state without an authority key fails and names the mint" 1 fixture-hooks-authority-key-missing.json MintBbbb
-expect "an RPC error object exits 2" 2 fixture-hooks-rpc-error.json
+rpc_error_output="$(RESPONSE_FILE="$data/fixture-hooks-rpc-error.json" "$check" "$mints" 2>&1)"
+rpc_error_exit=$?
+if [ "$rpc_error_exit" -ne 2 ]; then
+  echo "FAIL  an RPC error object exits 2 (expected exit 2, got $rpc_error_exit)"
+  failures=$((failures + 1))
+elif grep -q "leaked-secret-text" <<<"$rpc_error_output"; then
+  echo "FAIL  an RPC error object leaks its message"
+  failures=$((failures + 1))
+elif ! grep -q "code" <<<"$rpc_error_output"; then
+  echo "FAIL  an RPC error object does not report the code"
+  failures=$((failures + 1))
+else
+  echo "PASS  an RPC error object exits 2 and prints only the code (exit $rpc_error_exit)"
+fi
 expect "malformed JSON exits 2" 2 fixture-hooks-malformed.json
 expect "a missing response file exits 2" 2 fixture-hooks-does-not-exist.json
 

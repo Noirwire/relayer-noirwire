@@ -71,7 +71,8 @@ if ! jq -e . >/dev/null 2>&1 <<<"$response"; then
 fi
 
 if jq -e 'type == "object" and has("error")' >/dev/null 2>&1 <<<"$response"; then
-  die "the RPC returned an error: $(jq -c '.error' <<<"$response" | cut -c1-300)"
+  error_code="$(jq -r 'if (.error.code | type) == "number" and ((.error.code | tostring) | test("^-?[0-9]+$")) then (.error.code | tostring) else "unknown" end' <<<"$response" 2>/dev/null)"
+  die "the RPC returned an error (code ${error_code:-unknown})"
 fi
 
 if ! jq -e --argjson count "$count" \
