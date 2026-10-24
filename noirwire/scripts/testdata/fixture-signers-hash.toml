@@ -1,0 +1,8 @@
+# Synthetic fixture: a quoted type with a hash inside it is not the memory type.
+[signer_pool]
+strategy = "round_robin"
+
+[[signers]]
+name = "fixture_signer"
+type = "memory#FIXTURE_SECRET"
+private_key_env = "FIXTURE_PRIVATE_KEY"
