@@ -21,14 +21,50 @@ NoirWire's own server.
 Everything here lives in this one folder; all paths below are relative to it.
 
 ```
-kora/        Dockerfile, kora.toml, signers.toml (v2.2.0-beta.8, the default)
+kora/        Dockerfile, kora.toml, signers.template.toml (v2.2.0-beta.8, the default)
              Dockerfile.stable, kora.stable.toml (v2.0.5, the audited alternative)
+             The image holds only the nonsecret signers.template.toml (it names KORA_PRIVATE_KEY, no
+             value). A real signers.toml is never built into an image (.dockerignore excludes it);
+             for the local validation commands in deploy.md keep your own copy beside the config,
+             and mount it read-only (`-v "$PWD":/config:ro`) at runtime. Both Dockerfiles refuse
+             to start when KORA_API_KEY, KORA_HMAC_SECRET or KORA_PRIVATE_KEY is empty.
 refill/      the refill job (plain Node, two dependencies) and its tests
 scripts/     check-deploy.sh (a deployed Kora), check-upstream.sh (pinned image against upstream releases)
 .railway/    railway.ts: both Railway services as code
 deploy.md    the deployment sequence, command by command
 docs/        updating-from-upstream.md, and the record of the fork test this is built on
 ```
+
+## Before rollout
+
+Do these before the template image replaces a running deployment:
+
+1. **Compare the signer setup.** The image holds only `kora/signers.template.toml`: one memory
+   signer named `fee_payer` reading `KORA_PRIVATE_KEY`. Compare it with what is deployed today:
+   signer names, public keys, selection strategy and payment address (`kora.toml`
+   `payment_address`). The fee payer public key and payment address must equal the keys the
+   caller pins. If they differ, or the deployment uses another variable name, several signers or a
+   hardware-backed signer, do not ship the template as is.
+2. **Alternate signer setup.** An alternate configuration is mounted read-only at
+   `/app/signers.toml` at runtime; it is never built into an image.
+3. **Mounted file permissions (root stack).** The root image runs as an unprivileged user and
+   `docker-compose.yml` sets the container user from `KORA_UID` and `KORA_GID` (default 10001), so
+   no file mode has to be loosened. A `signers.toml` that you own with mode 0600 is read by
+   running the stack as yourself: `KORA_UID=$(id -u) KORA_GID=$(id -g) docker compose up`. To keep
+   the default user instead, hand the file to it: `sudo chown 10001 signers.toml && chmod 0400 signers.toml`.
+   Smoke check: `docker compose run --rm --no-deps kora cat /app/signers.toml >/dev/null` must
+   print nothing; "Permission denied" means the mount is unreadable and Kora will not start.
+4. **Redis password (root stack).** `REDIS_PASSWORD` goes into a `redis://:<password>@redis` URL
+   that the kora service builds inside its shell (the URL and the RPC URL never appear in process
+   arguments). The service refuses to start unless the password contains only `A-Z a-z 0-9 . _ ~ -`,
+   so nothing needs percent-encoding: generate it with `openssl rand -hex 24`.
+5. **No startup check of the fee payer key.** An `EXPECTED_FEE_PAYER` assertion was considered and
+   not built. Kora has no command that prints the public key it derives from `KORA_PRIVATE_KEY`,
+   and the only other route is calling `getPayerSigner` on the running server, which needs `curl`
+   or similar; the image carries none (no `curl`, `wget`, `jq` or base58 tool, only `sh` and
+   `openssl`), and adding one would be a new dependency. Instead, run `scripts/check-deploy.sh`
+   with `FEE_PAYER` set after every rollout: it compares the address Kora reports through
+   `getPayerSigner` with the address you pin and fails on a mismatch.
 
 ## The operating rule
 

@@ -1,0 +1,16 @@
+signers.toml
+.env
+.env.*
+*.env
+*keypair*.json
+*-key.json
+*_key.json
+*.key.json
+*.key
+id.json
+fee-payer*.json
+payment*.json
+keys/
+kora-keys/
+.git
+.DS_Store
