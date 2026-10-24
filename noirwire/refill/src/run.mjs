@@ -217,7 +217,8 @@ export async function run(cfg, deps) {
         const { plan } = cfg.dryRun ? { plan: await dryPlan(balances, microUsdcPerSol) } : await swapPlan(microUsdcPerSol);
         if (plan.action === "swap") {
           const order = await fetchOrder(fetchFn, cfg, plan.usdcAmount);
-          const quote = checkOrder(order, { usdcAmount: plan.usdcAmount, taker: cfg.wallet.publicKey }, microUsdcPerSol, cfg, nowSeconds());
+          const request = { usdcAmount: plan.usdcAmount, taker: cfg.wallet.publicKey };
+          const quote = checkOrder(order, request, microUsdcPerSol, cfg, nowSeconds());
           const checked = await checkTransaction(conn, quote, cfg.wallet.publicKey, cfg, nowSeconds());
           const action = {
             type: "swap",
@@ -243,7 +244,7 @@ export async function run(cfg, deps) {
             // and validated, and the order must still pass against it and the operator's bound.
             const freshPrice = await readReferencePrice(conn, nowSeconds());
             report.referenceUsdcPerSolAtSigning = usdc(freshPrice);
-            checkOrder(order, { usdcAmount: plan.usdcAmount, taker: cfg.wallet.publicKey }, freshPrice, cfg, nowSeconds());
+            checkOrder(order, request, freshPrice, cfg, nowSeconds());
             Object.assign(action, await submitSwap(deps, cfg, quote));
             sentByThisRun.add(action.signature);
             balances = await settle(await readBalances(conn, cfg));

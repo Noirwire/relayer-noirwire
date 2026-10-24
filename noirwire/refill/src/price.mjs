@@ -19,7 +19,7 @@ const PYTH_RECEIVER = "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ";
 const SOL_USD_FEED_ID = "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d";
 
 /** Older than this and the price is not used. */
-export const MAX_PRICE_AGE_SECONDS = 120;
+const MAX_PRICE_AGE_SECONDS = 120;
 /** The feed's own confidence interval must be within 1 percent of the price. */
 const MAX_CONFIDENCE_BPS = 100n;
 

@@ -83,7 +83,7 @@ export function fillTransaction(cfg, { payer = MAKER, extra = [], fills, ...fill
   return new VersionedTransaction(message.compileToV0Message());
 }
 
-export const encode = (transaction) => Buffer.from(transaction.serialize()).toString("base64");
+const encode = (transaction) => Buffer.from(transaction.serialize()).toString("base64");
 
 /** Jupiter's answer for `usdcAmount`, at `PRICE` unless `lamports` says otherwise. */
 export function order(cfg, usdcAmount, { lamports, transaction, ...fields } = {}) {
