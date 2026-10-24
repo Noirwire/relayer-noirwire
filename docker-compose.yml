@@ -6,14 +6,14 @@ services:
       - redis_data:/data
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
     restart: unless-stopped
-    # The password is written to an auth include file on tmpfs at start, so it never appears in
-    # redis-server's argument list.
+    # The password is checked (so a newline cannot inject a Redis directive), then written to an
+    # auth include file on tmpfs at start, so it never appears in redis-server's argument list.
     tmpfs:
       - /tmp
     command:
       - sh
       - -c
-      - 'umask 077; printf "requirepass %s\n" "$$REDIS_PASSWORD" > /tmp/redis-auth.conf; exec redis-server /usr/local/etc/redis/redis.conf --include /tmp/redis-auth.conf'
+      - 'case "$$REDIS_PASSWORD" in ""|*[!A-Za-z0-9._~-]*) echo "refusing to start: REDIS_PASSWORD may only contain A-Z a-z 0-9 . _ ~ - (openssl rand -hex 24)" >&2; exit 1;; esac; umask 077; printf "requirepass %s\n" "$$REDIS_PASSWORD" > /tmp/redis-auth.conf; exec redis-server /usr/local/etc/redis/redis.conf --include /tmp/redis-auth.conf'
     environment:
       - "REDIS_PASSWORD=${REDIS_PASSWORD:?set REDIS_PASSWORD in .env, URL-safe only, generate with openssl rand -hex 24}"
 
