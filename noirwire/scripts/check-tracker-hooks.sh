@@ -48,13 +48,11 @@ else
     '{jsonrpc: "2.0", id: 1, method: "getMultipleAccounts",
       params: [$mints, {encoding: "jsonParsed", commitment: "finalized"}]}')" ||
     die "could not build the RPC request"
-  # The URL may carry a provider key, so a failure names at most the host.
-  rpc_host="${rpc_url#*://}"
-  rpc_host="${rpc_host%%[/?#]*}"
-  rpc_host="${rpc_host##*@}"
-  response="$(curl --silent --show-error --fail --max-time 30 --retry 2 \
-    -H 'Content-Type: application/json' -d "$request" "$rpc_url")" ||
-    die "the RPC request failed (host: ${rpc_host})"
+  # The URL may carry a provider key, and curl's own error text names the host, so curl's
+  # stderr is discarded and a failure prints a fixed message with no part of the URL.
+  response="$(curl --silent --fail --max-time 30 --retry 2 \
+    -H 'Content-Type: application/json' -d "$request" "$rpc_url" 2>/dev/null)" ||
+    die "the RPC request failed"
 fi
 
 if ! jq -e . >/dev/null 2>&1 <<<"$response"; then
