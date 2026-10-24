@@ -83,6 +83,15 @@ jobs:
       # ubuntu-latest runners carry shellcheck preinstalled; no action or extra dependency needed.
       - run: shellcheck noirwire/scripts/*.sh
 
+  signers-local:
+    name: signers are local keys only
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - run: noirwire/scripts/test-check-signers-local.sh
+      - run: noirwire/scripts/check-signers-local.sh noirwire/kora/signers.toml
+
   upstream-check:
     name: weekly upstream release check (report only)
     if: github.event_name == 'schedule'
