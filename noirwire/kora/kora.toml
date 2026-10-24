@@ -65,12 +65,16 @@ allow_allocate = false
 # would also have to be on allowed_programs for Kora to sign a transaction that reaches it.
 # Before launch, confirm each tracker mint's hook authority and program are as expected.
 transfer_hook_policy = "allow_all"
+# Checked on payment mints and on extension-initialising instructions only, not on every mint a
+# transaction moves: the tracker mints carry a permanent delegate and are still signed for, while
+# a permanent-delegate mint can never be accepted as payment.
 blocked_mint_extensions = [
     "transfer_fee_config",
     "non_transferable",
     "interest_bearing_config",
     "mint_close_authority",
     "confidential_mint_burn",
+    "permanent_delegate",
 ]
 blocked_account_extensions = [
     "non_transferable_account",
