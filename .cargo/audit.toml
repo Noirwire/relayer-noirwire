@@ -8,6 +8,14 @@ ignore = [
     "RUSTSEC-2026-0098",
     # rustls-webpki 0.101.x is pinned by the transitive rustls 0.21 TLS stack.
     "RUSTSEC-2026-0099",
+    # rustls 0.21.12 and rustls-webpki 0.101.7 are pinned by jsonrpsee 0.16 (hyper-rustls 0.24).
+    # The local RPC server binds plain HTTP and no jsonrpsee HTTP or WebSocket client is
+    # constructed in crates/lib or crates/cli. Drop these once jsonrpsee moves off 0.16.
+    "RUSTSEC-2026-0349",
+    "RUSTSEC-2026-0346",
+    "RUSTSEC-2026-0382",
+    # webpki-roots 0.25.4 comes from the same jsonrpsee 0.16 client stack.
+    "RUSTSEC-2026-0381",
     # rkyv is an inactive optional dependency of rust_decimal; Kora does not enable its
     # rkyv features.
     "RUSTSEC-2026-0235",
@@ -22,4 +30,13 @@ ignore = [
     # idna 0.1.5 comes from jsonrpc-core-client, reached only by the tests crate via
     # surfpool-sdk.
     "RUSTSEC-2024-0421",
+    # crypto-bigint 0.5.5 comes from elliptic-curve 0.13.8 via p256 and p384 (solana-keychain
+    # and jsonwebtoken) and via k256 (bip32, solana-secp256k1-program, solana-secp256k1-recover).
+    # None is exercised here: the deployment signs with a local ed25519 memory signer, only
+    # configured signers are built (SignerPool::from_config), no crates/ code calls
+    # jsonwebtoken (it is only a solana-keychain dependency used by the custodial signers),
+    # and API auth is HMAC-SHA256. noirwire/scripts/check-signers-local.sh fails CI if
+    # noirwire/kora/signers.toml configures anything but the memory signer type. The fix is
+    # crypto-bigint >=0.7.6, which needs elliptic-curve 0.14. Remove this entry once that lands.
+    "RUSTSEC-2026-0387",
 ]

@@ -1,0 +1,13 @@
+[signer_pool]
+strategy = "round_robin"
+
+[[signers]]
+name = "fixture_memory_1"
+type = "memory"
+private_key_env = "FIXTURE_KEY_1"
+
+[[signers]]
+name = "fixture_turnkey_1"
+type = "turnkey"
+api_public_key_env = "FIXTURE_TURNKEY_PUB"
+api_private_key_env = "FIXTURE_TURNKEY_PRIV"

@@ -23,8 +23,8 @@ jobs:
               return;
             }
 
-            if (!pr.head.repo?.fork) {
-              core.info("Internal PR detected; fork live gate is not required.");
+            if (pr.head.repo?.full_name === pr.base.repo.full_name) {
+              core.info("Same-repository PR detected; fork live gate is not required.");
               return;
             }
 

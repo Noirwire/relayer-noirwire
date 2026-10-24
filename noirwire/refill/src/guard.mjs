@@ -2,7 +2,7 @@ import { getAssociatedTokenAddressSync, NATIVE_MINT, TOKEN_2022_PROGRAM_ID, TOKE
 import { ComputeBudgetProgram, PublicKey, SystemProgram, VersionedTransaction } from "@solana/web3.js";
 import { Refusal } from "./errors.mjs";
 import { SOL_MINT, USDC_MINT } from "./jupiter.mjs";
-import { ceilDiv } from "./units.mjs";
+import { ceilDiv, LAMPORTS_PER_SOL } from "./units.mjs";
 
 /**
  * Everything that stands between Jupiter's answer and a signature.
@@ -20,10 +20,11 @@ import { ceilDiv } from "./units.mjs";
  */
 
 export const USDC = new PublicKey(USDC_MINT);
-const LAMPORTS_PER_SOL = 1_000_000_000n;
+
+export const usdcAccountOf = (wallet) => getAssociatedTokenAddressSync(USDC, wallet, true);
 
 /** The least lamports `usdcUnits` must buy at `microUsdcPerSol` (rounded against the venue). */
-export const lamportsAtPrice = (usdcUnits, microUsdcPerSol) => ceilDiv(usdcUnits * LAMPORTS_PER_SOL, microUsdcPerSol);
+const lamportsAtPrice = (usdcUnits, microUsdcPerSol) => ceilDiv(usdcUnits * LAMPORTS_PER_SOL, microUsdcPerSol);
 
 const digits = (value, label) => {
   if (typeof value !== "string" || !/^\d+$/.test(value) || BigInt(value) <= 0n) {
@@ -113,7 +114,7 @@ const FILL_OUTPUT_MINT = 8;
  * account closure and durable nonce in one stroke. An instruction this code cannot decode is
  * not signed.
  */
-export function checkInstructions(message, quote, wallet, nowSeconds) {
+function checkInstructions(message, quote, wallet, nowSeconds) {
   if (message.addressTableLookups.length > 0) {
     throw new Refusal("program_not_allowed", "the transaction uses address lookup tables, which a market-maker fill does not");
   }
@@ -146,7 +147,7 @@ export function checkInstructions(message, quote, wallet, nowSeconds) {
   }
   if (
     !account(FILL_TAKER)?.equals(wallet) ||
-    !account(FILL_TAKER_INPUT_ACCOUNT)?.equals(getAssociatedTokenAddressSync(USDC, wallet, true)) ||
+    !account(FILL_TAKER_INPUT_ACCOUNT)?.equals(usdcAccountOf(wallet)) ||
     !account(FILL_INPUT_MINT)?.equals(USDC) ||
     !account(FILL_OUTPUT_MINT)?.equals(NATIVE_MINT)
   ) {
@@ -199,7 +200,7 @@ export async function checkTransaction(conn, quote, wallet, cfg, nowSeconds) {
   const message = transaction.message;
   const fill = checkInstructions(message, quote, wallet, nowSeconds);
 
-  const usdcAccount = getAssociatedTokenAddressSync(USDC, wallet, true);
+  const usdcAccount = usdcAccountOf(wallet);
   const wrappedSol = getAssociatedTokenAddressSync(NATIVE_MINT, wallet, true);
   const inTransaction = new Set(message.staticAccountKeys.map((key) => key.toBase58()));
   const others = (await ownedTokenAccounts(conn, wallet)).filter(

@@ -22,7 +22,7 @@ env:
 jobs:
   linked_issue:
     name: Accepted issue linked
-    if: github.event.pull_request.user.type != 'Bot'
+    if: github.event.pull_request.user.type != 'Bot' && !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest
     env:
       LABEL: needs-issue
@@ -106,7 +106,7 @@ jobs:
 
   signed_commits:
     name: Commits signed
-    if: github.event.pull_request.user.type != 'Bot'
+    if: github.event.pull_request.user.type != 'Bot' && !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest
     env:
       MARKER: <!-- signed-commits
@@ -161,7 +161,7 @@ jobs:
 
   disclosure:
     name: AI disclosure declared
-    if: github.event.pull_request.user.type != 'Bot'
+    if: github.event.pull_request.user.type != 'Bot' && !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest
     steps:
       - name: Require exactly one disclosure box
