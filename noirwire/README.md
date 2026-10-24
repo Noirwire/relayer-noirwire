@@ -47,12 +47,24 @@ Do these before the template image replaces a running deployment:
    hardware-backed signer, do not ship the template as is.
 2. **Alternate signer setup.** An alternate configuration is mounted read-only at
    `/app/signers.toml` at runtime; it is never built into an image.
-3. **Mounted file permissions.** The root-stack Dockerfile runs as uid 10001, so a mounted
-   `signers.toml` must be readable by it: `sudo chown 10001 signers.toml && chmod 0400 signers.toml`.
+3. **Mounted file permissions (root stack).** The root image runs as an unprivileged user and
+   `docker-compose.yml` sets the container user from `KORA_UID` and `KORA_GID` (default 10001), so
+   no file mode has to be loosened. A `signers.toml` that you own with mode 0600 is read by
+   running the stack as yourself: `KORA_UID=$(id -u) KORA_GID=$(id -g) docker compose up`. To keep
+   the default user instead, hand the file to it: `sudo chown 10001 signers.toml && chmod 0400 signers.toml`.
    Smoke check: `docker compose run --rm --no-deps kora cat /app/signers.toml >/dev/null` must
    print nothing; "Permission denied" means the mount is unreadable and Kora will not start.
-4. **Redis password (root stack).** `REDIS_PASSWORD` is placed in a `redis://:<password>@redis`
-   URL, so it must be URL-safe: generate it with `openssl rand -hex 24`.
+4. **Redis password (root stack).** `REDIS_PASSWORD` goes into a `redis://:<password>@redis` URL
+   that the kora service builds inside its shell (the URL and the RPC URL never appear in process
+   arguments). The service refuses to start unless the password contains only `A-Z a-z 0-9 . _ ~ -`,
+   so nothing needs percent-encoding: generate it with `openssl rand -hex 24`.
+5. **No startup check of the fee payer key.** An `EXPECTED_FEE_PAYER` assertion was considered and
+   not built. Kora has no command that prints the public key it derives from `KORA_PRIVATE_KEY`,
+   and the only other route is calling `getPayerSigner` on the running server, which needs `curl`
+   or similar; the image carries none (no `curl`, `wget`, `jq` or base58 tool, only `sh` and
+   `openssl`), and adding one would be a new dependency. Instead, run `scripts/check-deploy.sh`
+   with `FEE_PAYER` set after every rollout: it compares the address Kora reports through
+   `getPayerSigner` with the address you pin and fails on a mismatch.
 
 ## The operating rule
 

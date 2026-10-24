@@ -15,7 +15,7 @@ services:
       - -c
       - 'umask 077; printf "requirepass %s\n" "$$REDIS_PASSWORD" > /tmp/redis-auth.conf; exec redis-server /usr/local/etc/redis/redis.conf --include /tmp/redis-auth.conf'
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:?set REDIS_PASSWORD in .env, URL-safe only: generate with openssl rand -hex 24}
+      - "REDIS_PASSWORD=${REDIS_PASSWORD:?set REDIS_PASSWORD in .env, URL-safe only, generate with openssl rand -hex 24}"
 
   kora:
     build:
@@ -23,24 +23,32 @@ services:
       dockerfile: Dockerfile
     ports:
       - "127.0.0.1:8080:8080"
-    # The image runs as uid 10001, so the mounted signers.toml must be readable by it:
-    #   sudo chown 10001 signers.toml && chmod 0400 signers.toml
+    # The container runs as the uid:gid in KORA_UID and KORA_GID (default 10001), so the mounted
+    # signers.toml and .env are read with the host file's own owner and mode, and no mode is
+    # loosened. If your files are owned by you and mode 0600, set in .env or the shell:
+    #   KORA_UID=$(id -u) KORA_GID=$(id -g)
     # Smoke check: docker compose run --rm --no-deps kora cat /app/signers.toml >/dev/null
     # (prints nothing when the mount is readable, "Permission denied" when it is not).
+    user: "${KORA_UID:-10001}:${KORA_GID:-10001}"
     volumes:
       - ./kora.toml:/app/kora.toml:ro
       - ./signers.toml:/app/signers.toml:ro
       - ./.env:/app/.env:ro
     environment:
       - RUST_LOG=info
+      - RPC_URL=${RPC_URL:-http://127.0.0.1:8899}
       - KORA_API_KEY=${KORA_API_KEY:?set KORA_API_KEY in .env, the RPC refuses unauthenticated use}
-      - KORA_REDIS_URL=redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
     env_file:
       - .env
+    # Secrets stay out of the process arguments: the RPC URL (it may carry a provider key) is read
+    # from the RPC_URL environment variable, and the Redis URL is assembled here, in the shell,
+    # after checking the password needs no percent-encoding (an unescaped @, :, / or % would
+    # silently break the URL or point it somewhere else).
     command:
       - sh
       - -c
-      - "kora --config /app/kora.toml --rpc-url ${RPC_URL:-http://127.0.0.1:8899} rpc start --signers-config /app/signers.toml"
+      - 'case "$$REDIS_PASSWORD" in ""|*[!A-Za-z0-9._~-]*) echo "refusing to start: REDIS_PASSWORD may only contain A-Z a-z 0-9 . _ ~ - (openssl rand -hex 24)" >&2; exit 1;; esac; export KORA_REDIS_URL="redis://:$$REDIS_PASSWORD@redis:6379"; exec kora --config /app/kora.toml rpc start --signers-config /app/signers.toml'
     restart: unless-stopped
     depends_on:
       - redis
