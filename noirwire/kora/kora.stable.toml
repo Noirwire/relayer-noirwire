@@ -63,6 +63,7 @@ blocked_mint_extensions = [
     "interest_bearing_config",
     "mint_close_authority",
     "confidential_mint_burn",
+    "permanent_delegate",
 ]
 blocked_account_extensions = [
     "non_transferable_account",
