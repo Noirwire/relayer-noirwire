@@ -1,0 +1,4 @@
+# Three placeholder mints; the fixture responses are in the same order.
+MintAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+MintBbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+MintCcccccccccccccccccccccccccccccccccccccccc

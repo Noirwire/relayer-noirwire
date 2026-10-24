@@ -462,6 +462,17 @@ the new address in `kora/kora.toml` and in the app's `KORA_PAYMENT_WALLET`, rede
 the app, give the refill job the new `PAYMENT_WALLET_PRIVATE_KEY`, then move the old wallet's
 USDC and SOL by hand. The job's 24-hour counters start from zero for a new wallet.
 
+## Transfer hook policy
+
+`kora/kora.toml` sets `transfer_hook_policy = "allow_all"` so the relayer can co-sign sends of
+the Token-2022 tracker mints listed in `tracker-mints.txt`. That is safe only while each mint
+has the TransferHook extension with the expected authority and no hook program. A daily CI run
+(`scripts/check-tracker-hooks.sh`) reads every mint from chain and fails if a mint is missing,
+loses the extension, changes its authority, or gets a hook program. When it fails, set
+`transfer_hook_policy` to `deny_mutable_for_delayed_signing` or remove the mint from the
+config, then investigate what the issuer changed. A run that exits 2 could not read the chain
+and proves nothing either way.
+
 ## Keeping up with upstream
 
 `scripts/check-upstream.sh` prints the latest upstream stable and pre-release tags and image
