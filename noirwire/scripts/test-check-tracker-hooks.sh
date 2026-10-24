@@ -45,6 +45,9 @@ if [ "$actual" -ne 2 ]; then
 elif grep -q -e secret -e abc123 -e key123 <<<"$output"; then
   echo "FAIL  a failed RPC call leaks the URL credentials"
   failures=$((failures + 1))
+elif ! grep -q "curl exit" <<<"$output"; then
+  echo "FAIL  a failed RPC call does not report the curl exit"
+  failures=$((failures + 1))
 else
   echo "PASS  a failed RPC call exits 2 and does not print the URL credentials (exit $actual)"
 fi
