@@ -6,10 +6,14 @@ on:
     paths:
       - "noirwire/**"
       - ".github/workflows/noirwire.yml"
+      - ".cargo/audit.toml"
+      - "Cargo.lock"
   pull_request:
     paths:
       - "noirwire/**"
       - ".github/workflows/noirwire.yml"
+      - ".cargo/audit.toml"
+      - "Cargo.lock"
   schedule:
     # Report-only: tells us when upstream has a new Kora release. Never fails the run.
     - cron: "17 8 * * 1"

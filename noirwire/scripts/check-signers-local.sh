@@ -9,12 +9,17 @@
 # paths that use the affected P-256 and JWT crypto.
 #
 # The schema is simple (an array of [[signers]] tables, each with a `type = "..."` key), so
-# the file is read line by line. Only PASS or FAIL and the offending type values are printed,
-# never any other line of the file, so nothing secret can leak into CI logs.
+# the file is read line by line. A type line passes only when it is exactly `type = "memory"`
+# or `type = 'memory'` with an optional trailing comment; any other spelling fails, which is
+# the safe direction.
+# Only PASS or FAIL and signer numbers are printed, never a value or any other text from the
+# file, so nothing secret can leak into CI logs.
 
 set -u
 
 LOCAL_TYPE="memory"
+TYPE_KEY='^type[[:space:]]*='
+LOCAL_TYPE_LINE="^type[[:space:]]*=[[:space:]]*(\"$LOCAL_TYPE\"|'$LOCAL_TYPE')[[:space:]]*(#.*)?$"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 file="${1:-$script_dir/../kora/signers.toml}"
@@ -37,35 +42,31 @@ close_signer() {
 }
 
 while IFS= read -r line || [ -n "$line" ]; do
-  line="${line%%#*}"
   line="${line#"${line%%[![:space:]]*}"}"
   line="${line%"${line##*[![:space:]]}"}"
-  case "$line" in
+  header="${line%%#*}"
+  header="${header%"${header##*[![:space:]]}"}"
+  case "$header" in
     "[[signers]]")
       close_signer
       in_signer=1
       has_type=0
       signers=$((signers + 1))
+      continue
       ;;
     "["*)
       close_signer
       in_signer=0
-      ;;
-    type[[:space:]]*=*|type=*)
-      if [ "$in_signer" -eq 1 ]; then
-        value="${line#*=}"
-        value="${value#"${value%%[![:space:]]*}"}"
-        value="${value%"${value##*[![:space:]]}"}"
-        value="${value#[\"\']}"
-        value="${value%[\"\']}"
-        has_type=1
-        if [ "$value" != "$LOCAL_TYPE" ]; then
-          echo "FAIL  non-local signer type: $value"
-          bad=$((bad + 1))
-        fi
-      fi
+      continue
       ;;
   esac
+  if [ "$in_signer" -eq 1 ] && [[ "$line" =~ $TYPE_KEY ]]; then
+    has_type=1
+    if ! [[ "$line" =~ $LOCAL_TYPE_LINE ]]; then
+      echo "FAIL  signer $signers is not type \"$LOCAL_TYPE\""
+      bad=$((bad + 1))
+    fi
+  fi
 done <"$file"
 close_signer
 
