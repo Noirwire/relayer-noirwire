@@ -9,6 +9,7 @@ const wallet = Keypair.generate();
 const feePayer = Keypair.generate().publicKey.toBase58();
 const base = {
   RPC_URL: "https://rpc.example",
+  ROLLUP_RPC_URL: "https://rollup.example",
   PAYMENT_WALLET_PRIVATE_KEY: JSON.stringify([...wallet.secretKey]),
   FEE_PAYER: feePayer,
   MAX_USDC_PER_SOL: "300",
@@ -79,6 +80,12 @@ test("refuses nonsense numbers and oversized settings", () => {
 
 test("refuses a missing RPC or key, and never echoes the key", () => {
   refuses({ RPC_URL: "" }, /RPC_URL/);
+  refuses({ ROLLUP_RPC_URL: "" }, /ROLLUP_RPC_URL/);
+  refuses({ ROLLUP_RPC_URL: "ws://rollup.example" }, /ROLLUP_RPC_URL/);
+  refuses({ ROLLUP_RPC_URL: "http://rollup.example" }, /ROLLUP_RPC_URL/);
+  for (const local of ["http://localhost:8899", "http://127.0.0.1:8899", "http://[::1]:8899"]) {
+    assert.equal(loadConfig({ ...base, ROLLUP_RPC_URL: local }).rollupRpcUrl, local);
+  }
   refuses({ PAYMENT_WALLET_PRIVATE_KEY: "" }, /PAYMENT_WALLET_PRIVATE_KEY/);
   const secret = "5JbadKeyMaterialThatMustNotAppear";
   try {
@@ -108,7 +115,7 @@ test("FEE_PAYER_UNSEEN_OK counts only when it repeats FEE_PAYER exactly", () => 
 test("no raw environment value ever appears in an error", () => {
   // A secret pasted into the wrong variable must not be printed back.
   const secret = base58Encode(Keypair.generate().secretKey);
-  for (const name of ["TARGET_SOL", "REFILL_BELOW_SOL", "MAX_USDC_PER_RUN", "MAX_RUNS_PER_DAY", "USDC_FLOOR", "PAYMENT_WALLET_SOL_RESERVE", "MAX_SLIPPAGE_BPS", "MAX_USDC_PER_SOL", "DRY_RUN", "FEE_PAYER", "FEE_PAYER_UNSEEN_OK", "RPC_URL"]) {
+  for (const name of ["TARGET_SOL", "REFILL_BELOW_SOL", "MAX_USDC_PER_RUN", "MAX_RUNS_PER_DAY", "USDC_FLOOR", "PAYMENT_WALLET_SOL_RESERVE", "MAX_SLIPPAGE_BPS", "MAX_USDC_PER_SOL", "DRY_RUN", "FEE_PAYER", "FEE_PAYER_UNSEEN_OK", "RPC_URL", "ROLLUP_RPC_URL"]) {
     try {
       loadConfig({ ...base, [name]: secret });
       assert.fail(`${name} accepted a secret key as its value`);

@@ -34,6 +34,7 @@ watchdog.unref();
 const { exitCode, report } = await run(cfg, {
   // Every RPC call is given a wall-clock bound; web3.js retries rate limits by itself.
   conn: bounded(new Connection(cfg.rpcUrl, "confirmed")),
+  rollupConn: bounded(new Connection(cfg.rollupRpcUrl, "confirmed")),
   fetchFn: fetch,
   clock: { now: Date.now, sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) },
 });

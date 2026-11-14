@@ -5,7 +5,7 @@ import { Keypair, PublicKey, SystemProgram, TransactionInstruction } from "@sola
 import { Refusal } from "../src/errors.mjs";
 import { checkOrder, checkTransaction, USDC } from "../src/guard.mjs";
 import { readReferencePrice } from "../src/price.mjs";
-import { fakeConn, fillInstruction, fillTransaction, MAKER, NOW, order, PRICE, pythAccount, SOL, testConfig, tokenAccountData, usdcAccount } from "./helpers.mjs";
+import { fakeConn, fillInstruction, fillTransaction, MAKER, NOW, order, PRICE, magicblockAccount, SOL, testConfig, tokenAccountData, usdcAccount } from "./helpers.mjs";
 
 const cfg = testConfig();
 const wallet = cfg.wallet.publicKey;
@@ -181,23 +181,26 @@ test("simulation: the swap would fail on chain", async () => {
 
 // The reference price.
 
-const priceFrom = (pyth) => readReferencePrice(fakeConn(cfg, start(), { pyth }), NOW);
+const priceFrom = (magicblock) => readReferencePrice(fakeConn(cfg, start(), { magicblock }), NOW);
 
-test("the Pyth price is decoded to raw USDC units per SOL", async () => {
-  assert.equal(await priceFrom(pythAccount()), PRICE);
-  assert.equal(await priceFrom(pythAccount({ price: 117_976_067n })), 117_976_067n);
+test("the MagicBlock price is decoded to raw USDC units per SOL", async () => {
+  assert.equal(await priceFrom(magicblockAccount()), PRICE);
+  assert.equal(await priceFrom(magicblockAccount({ price: 117_976_067n })), 117_976_067n);
 });
 
-test("a stale, unverified, foreign, wrong-feed or wide price is refused", async () => {
+test("a stale, unverified, foreign, wrong-feed or malformed price is refused", async () => {
   const noPrice = refusedWith("no_price");
-  assert.equal(await priceFrom(pythAccount({ age: 120 })), PRICE);
-  await assert.rejects(priceFrom(pythAccount({ age: 121 })), noPrice);
-  await assert.rejects(priceFrom(pythAccount({ age: -600 })), noPrice);
-  await assert.rejects(priceFrom(pythAccount({ verified: 0 })), noPrice);
-  await assert.rejects(priceFrom(pythAccount({ owner: stranger.toBase58() })), noPrice);
-  await assert.rejects(priceFrom(pythAccount({ feed: "aa".repeat(32) })), noPrice);
-  await assert.rejects(priceFrom(pythAccount({ confidence: 400_000_000n })), noPrice);
-  await assert.rejects(priceFrom(pythAccount({ price: 0n })), noPrice);
+  assert.equal(await priceFrom(magicblockAccount({ age: 120 })), PRICE);
+  await assert.rejects(priceFrom(magicblockAccount({ age: 121 })), noPrice);
+  assert.equal(await priceFrom(magicblockAccount({ age: -5 })), PRICE);
+  await assert.rejects(priceFrom(magicblockAccount({ age: -6 })), noPrice);
+  await assert.rejects(priceFrom(magicblockAccount({ age: -600 })), noPrice);
+  await assert.rejects(priceFrom(magicblockAccount({ verified: 0 })), noPrice);
+  await assert.rejects(priceFrom(magicblockAccount({ owner: stranger.toBase58() })), noPrice);
+  await assert.rejects(priceFrom(magicblockAccount({ feed: Buffer.alloc(32, 0xaa) })), noPrice);
+  await assert.rejects(priceFrom(magicblockAccount({ exponent: -8 })), noPrice);
+  await assert.rejects(priceFrom(magicblockAccount({ length: 101 })), noPrice);
+  await assert.rejects(priceFrom(magicblockAccount({ price: 0n })), noPrice);
   await assert.rejects(priceFrom(null), noPrice);
   assert.ok(MAKER);
 });
