@@ -1,3 +1,5 @@
+> **Deployed on the k3s cluster.** Kora and the refill job are deployed to our k3s cluster by the infra-noirwire repo; see the section "Moving the API, the fee relayer and the refill job off Railway" in that repo's `docs/k3s.md`. The Railway steps below describe the old setup, kept only until it is switched off. Put no new setting on Railway.
+
 # Deploying both services on Railway
 
 Everything is run from this folder (the one that contains `kora/`, `refill/` and `.railway/`).
@@ -107,6 +109,7 @@ Refill service (`FEE_PAYER` is a public key, the other three are secrets):
 
 ```bash
 printf '%s' '<YOUR_MAINNET_RPC>'         | railway variable set RPC_URL                    --stdin --service refill --skip-deploys
+printf '%s' '<MAGICBLOCK_ROLLUP_RPC>'    | railway variable set ROLLUP_RPC_URL             --stdin --service refill --skip-deploys
 cat ~/kora-keys/payment.json             | railway variable set PAYMENT_WALLET_PRIVATE_KEY --stdin --service refill --skip-deploys
 printf '%s' '<your Jupiter API key>'     | railway variable set JUPITER_API_KEY            --stdin --service refill --skip-deploys
 railway variable set FEE_PAYER=<FEE_PAYER> --service refill --skip-deploys
@@ -322,6 +325,7 @@ printf '%s' '<your Jupiter API key>'       | railway variable set JUPITER_API_KE
 
 # refill-2: the SAME payment wallet key, the NEW fee payer.
 printf '%s' '<YOUR_MAINNET_RPC>'           | railway variable set RPC_URL                    --stdin --service refill-2 --skip-deploys
+printf '%s' '<MAGICBLOCK_ROLLUP_RPC>'      | railway variable set ROLLUP_RPC_URL             --stdin --service refill-2 --skip-deploys
 cat ~/kora-keys/payment.json               | railway variable set PAYMENT_WALLET_PRIVATE_KEY --stdin --service refill-2 --skip-deploys
 printf '%s' '<your Jupiter API key>'       | railway variable set JUPITER_API_KEY            --stdin --service refill-2 --skip-deploys
 railway variable set FEE_PAYER=<FEE_PAYER_2> --service refill-2 --skip-deploys

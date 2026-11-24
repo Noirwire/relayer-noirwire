@@ -29,6 +29,18 @@ const MIN_RESERVE_LAMPORTS = 2_000_000n;
 
 export class ConfigError extends Error {}
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+
+/** True for an https URL, or an http URL whose host is this machine. */
+function isSecureOrLoopback(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || LOOPBACK_HOSTS.has(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 /** The payment wallet's key as base58 or as the JSON byte array `solana-keygen` writes. */
 function parseSecretKey(text) {
   const trimmed = text.trim();
@@ -60,6 +72,10 @@ export function loadConfig(env) {
 
   const rpcUrl = read("RPC_URL");
   if (!rpcUrl || !/^https?:\/\//.test(rpcUrl)) problems.push("RPC_URL: must be an http(s) URL");
+
+  const rollupRpcUrl = read("ROLLUP_RPC_URL");
+  if (!rollupRpcUrl || !/^https?:\/\//.test(rollupRpcUrl)) problems.push("ROLLUP_RPC_URL: must be an http(s) URL");
+  else if (!isSecureOrLoopback(rollupRpcUrl)) problems.push("ROLLUP_RPC_URL: must use https unless it points at this machine");
 
   let wallet = null;
   try {
@@ -142,6 +158,7 @@ export function loadConfig(env) {
 
   return {
     rpcUrl,
+    rollupRpcUrl,
     wallet,
     feePayer,
     // Optional: Jupiter answers without a key at a lower rate limit.

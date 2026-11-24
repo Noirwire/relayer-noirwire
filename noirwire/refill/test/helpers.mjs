@@ -3,13 +3,13 @@ import { ComputeBudgetProgram, Keypair, PublicKey, SystemProgram, TransactionIns
 import { loadConfig } from "../src/config.mjs";
 import { FILL_DISCRIMINATOR, RFQ_PROGRAM, USDC } from "../src/guard.mjs";
 import { SOL_MINT, USDC_MINT } from "../src/jupiter.mjs";
-import { PYTH_SOL_USD } from "../src/price.mjs";
+import { MAGICBLOCK_SOL_USD } from "../src/price.mjs";
 
 // Fakes for the RPC and for Jupiter. No test touches the network.
 
 export const BLOCKHASH = "GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi";
 export const SOL = 1_000_000_000n;
-/** 150 USDC per SOL: what the fake Pyth account reports and what honest orders fill at. */
+/** 150 USDC per SOL: what the fake MagicBlock account reports and what honest orders fill at. */
 export const PRICE = 150_000_000n;
 /** The moment every test happens at, in seconds. */
 export const NOW = 1_800_000_000;
@@ -20,6 +20,7 @@ export function testConfig(overrides = {}) {
   const feePayer = Keypair.generate();
   return loadConfig({
     RPC_URL: "http://rpc.invalid",
+    ROLLUP_RPC_URL: "https://rollup.invalid",
     PAYMENT_WALLET_PRIVATE_KEY: JSON.stringify([...wallet.secretKey]),
     FEE_PAYER: feePayer.publicKey.toBase58(),
     MAX_USDC_PER_SOL: "300",
@@ -43,14 +44,14 @@ export function tokenAccountData(mint, owner, amount, { delegate } = {}) {
   return data;
 }
 
-/** A Pyth PriceUpdateV2 account for SOL/USD. */
-export function pythAccount({ price = PRICE, age = 5, confidence = 10_000n, verified = 1, owner = "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ", feed } = {}) {
-  const data = Buffer.alloc(134);
+/** A MagicBlock PriceUpdateV3 account for SOL/USD, 8 decimals. */
+export function magicblockAccount({ price = PRICE, age = 5, verified = 1, owner = "PriCems5tHihc6UDXDjzjeawomAwBduWMGAi8ZUjppd", feed, exponent = 8, length = 134 } = {}) {
+  const data = Buffer.alloc(length);
+  Buffer.from([234, 161, 14, 36, 172, 239, 15, 232]).copy(data, 0);
   data[40] = verified;
-  Buffer.from(feed ?? "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d", "hex").copy(data, 41);
-  data.writeBigInt64LE(price * 100n, 73); // exponent -8
-  data.writeBigUInt64LE(confidence, 81);
-  data.writeInt32LE(-8, 89);
+  (feed ?? MAGICBLOCK_SOL_USD.toBuffer()).copy(data, 41);
+  data.writeBigInt64LE(price * 100n, 73);
+  data.writeInt32LE(exponent, 89);
   data.writeBigInt64LE(BigInt(NOW - age), 93);
   return { owner: new PublicKey(owner), data, lamports: 1 };
 }
@@ -124,7 +125,7 @@ export function fakeConn(cfg, state, options = {}) {
       return state.walletLamports > 0n ? { lamports: Number(state.walletLamports), data: Buffer.alloc(0), owner: SystemProgram.programId } : null;
     }
     if (address === usdcAccount(cfg).toBase58()) return { lamports: 2_039_280, data: tokenAccountData(USDC, wallet, state.usdc ?? 0n) };
-    if (address === PYTH_SOL_USD.toBase58()) return options.pyth === undefined ? pythAccount() : options.pyth;
+    if (address === MAGICBLOCK_SOL_USD.toBase58()) return options.magicblock === undefined ? magicblockAccount() : options.magicblock;
     const other = others.find((entry) => entry.pubkey.equals(key));
     return other ? { lamports: 2_039_280, data: other.data } : null;
   };

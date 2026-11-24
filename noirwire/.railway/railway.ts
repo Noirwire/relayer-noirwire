@@ -65,6 +65,7 @@ const refill = (name: string, minute: number) =>
       MAX_SLIPPAGE_BPS: "100",
       DRY_RUN: "0",
       RPC_URL: preserve(),
+      ROLLUP_RPC_URL: preserve(),
       PAYMENT_WALLET_PRIVATE_KEY: preserve(),
       FEE_PAYER: preserve(),
       // Required, no default: the most USDC the job may ever pay for one SOL.

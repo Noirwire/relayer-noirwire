@@ -77,11 +77,11 @@ async function submitSwap({ conn, fetchFn, clock }, cfg, quote) {
 /**
  * One run. Returns `{ exitCode, report }`; the caller prints the report as one JSON line.
  *
- * `deps` carries everything that touches the outside world (`conn`, `fetchFn`, `clock`), so
- * the tests can run the whole thing against fakes.
+ * `deps` carries everything that touches the outside world (`conn`, `rollupConn` for the
+ * reference price, `fetchFn`, `clock`), so the tests can run the whole thing against fakes.
  */
 export async function run(cfg, deps) {
-  const { conn, fetchFn, clock } = deps;
+  const { conn, rollupConn, fetchFn, clock } = deps;
   const startedAt = clock.now();
   const nowSeconds = () => Math.floor(clock.now() / 1000);
   // The two addresses below are the operator's own (the relayer's fee payer and its payment
@@ -190,7 +190,7 @@ export async function run(cfg, deps) {
     report.before = balancesForReport(balances);
 
     // Independent of Jupiter. Null when it cannot be trusted right now.
-    const microUsdcPerSol = await readReferencePrice(conn, nowSeconds()).catch((error) => {
+    const microUsdcPerSol = await readReferencePrice(rollupConn, nowSeconds()).catch((error) => {
       if (error instanceof Refusal) return null;
       throw error;
     });
@@ -242,7 +242,7 @@ export async function run(cfg, deps) {
             }
             // The price too: the first reading may be minutes old by now. A fresh one is read
             // and validated, and the order must still pass against it and the operator's bound.
-            const freshPrice = await readReferencePrice(conn, nowSeconds());
+            const freshPrice = await readReferencePrice(rollupConn, nowSeconds());
             report.referenceUsdcPerSolAtSigning = usdc(freshPrice);
             checkOrder(order, request, freshPrice, cfg, nowSeconds());
             Object.assign(action, await submitSwap(deps, cfg, quote));

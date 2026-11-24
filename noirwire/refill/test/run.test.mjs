@@ -5,10 +5,10 @@ import { bounded, RpcTimeout } from "../src/bounded.mjs";
 import { assertRefillTransfer, buildRefillTransfer, feePayerHasRelayed, reconcileFeePayer, walletLast24h } from "../src/chain.mjs";
 import { EXIT, Refusal } from "../src/errors.mjs";
 import { MAX_LAMPORTS_TO_FEE_PAYER_PER_DAY, withinDailyCeiling } from "../src/plan.mjs";
-import { PYTH_SOL_USD } from "../src/price.mjs";
+import { MAGICBLOCK_SOL_USD } from "../src/price.mjs";
 import { run, RUN_DEADLINE_MS, SWAP_QUIET_SLOTS } from "../src/run.mjs";
 import { base58Encode } from "../src/units.mjs";
-import { BLOCKHASH, fakeClock, fakeConn, fakeJupiter, history, landed, NOW, order, PRICE, pythAccount, SOL, testConfig } from "./helpers.mjs";
+import { BLOCKHASH, fakeClock, fakeConn, fakeJupiter, history, landed, NOW, order, PRICE, magicblockAccount, SOL, testConfig } from "./helpers.mjs";
 
 const AMOUNT = 10_605_000n; // what 0.07 SOL costs at 150 USDC, plus 1%
 /** The USDC amount of the last order asked for, so the fake simulation can honour it. */
@@ -48,7 +48,7 @@ function chain(cfg, state, options = {}) {
   conn.landedTransactions = transactions;
   return conn;
 }
-const go = (cfg, conn, jupiter = fakeJupiter(), clock = fakeClock()) => run(cfg, { conn, fetchFn: jupiter, clock });
+const go = (cfg, conn, jupiter = fakeJupiter(), clock = fakeClock()) => run(cfg, { conn, rollupConn: conn, fetchFn: jupiter, clock });
 
 test("above the threshold: nothing is sent, exit 0", async () => {
   const cfg = testConfig();
@@ -200,7 +200,7 @@ test("below the threshold with no USDC: refused, exit non-zero", async () => {
 
 test("no usable reference price: no swap", async () => {
   const cfg = testConfig();
-  const conn = chain(cfg, { feePayerLamports: 5_000_000n, walletLamports: 10_000_000n, usdc: 80_000_000n }, { pyth: pythAccount({ age: 900 }) });
+  const conn = chain(cfg, { feePayerLamports: 5_000_000n, walletLamports: 10_000_000n, usdc: 80_000_000n }, { magicblock: magicblockAccount({ age: 900 }) });
   const jupiter = fakeJupiter({ order: answering(cfg) });
   const { exitCode, report } = await go(cfg, conn, jupiter);
   assert.equal(exitCode, EXIT.refused);
@@ -453,23 +453,23 @@ test("the price is read again immediately before signing, and the order must sti
     const simulate = conn.simulateTransaction;
     conn.simulateTransaction = async (...args) => ((checked = true), simulate(...args));
     const read = conn.getAccountInfo;
-    conn.getAccountInfo = async (key) => (checked && key.equals(PYTH_SOL_USD) ? later : read(key));
+    conn.getAccountInfo = async (key) => (checked && key.equals(MAGICBLOCK_SOL_USD) ? later : read(key));
     return { ...(await go(cfg, conn, jupiter)), jupiter };
   };
   // SOL got cheaper while the order was being checked: the quote is now a bad price.
-  const moved = await attempt(pythAccount({ price: 120_000_000n }));
+  const moved = await attempt(magicblockAccount({ price: 120_000_000n }));
   assert.equal(moved.report.refusal, "below_reference_price");
   assert.equal(moved.jupiter.count("/execute"), 0);
   // The feed went stale: no fresh price, no signature.
-  const stale = await attempt(pythAccount({ age: 500 }));
+  const stale = await attempt(magicblockAccount({ age: 500 }));
   assert.equal(stale.report.refusal, "no_price");
   assert.equal(stale.jupiter.count("/execute"), 0);
   // The price rose past the operator's bound.
-  const dear = await attempt(pythAccount({ price: 301_000_000n }));
+  const dear = await attempt(magicblockAccount({ price: 301_000_000n }));
   assert.equal(dear.report.refusal, "price_above_bound");
   assert.equal(dear.jupiter.count("/execute"), 0);
   // Unchanged: the swap goes through and the fresh reading is reported.
-  const same = await attempt(pythAccount());
+  const same = await attempt(magicblockAccount());
   assert.equal(same.exitCode, EXIT.ok, same.report.reason);
   assert.equal(same.report.referenceUsdcPerSolAtSigning, "150");
 });

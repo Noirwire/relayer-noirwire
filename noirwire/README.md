@@ -29,6 +29,7 @@ kora/        Dockerfile, kora.toml, signers.template.toml (v2.2.0-beta.8, the de
              and mount it read-only (`-v "$PWD":/config:ro`) at runtime. Both Dockerfiles refuse
              to start when KORA_API_KEY, KORA_HMAC_SECRET or KORA_PRIVATE_KEY is empty.
 refill/      the refill job (plain Node, two dependencies) and its tests
+             Dockerfile, .dockerignore: the job's image is built from refill/Dockerfile
 scripts/     check-deploy.sh (a deployed Kora), check-upstream.sh (pinned image against upstream releases)
 .railway/    railway.ts: both Railway services as code
 deploy.md    the deployment sequence, command by command
@@ -210,7 +211,7 @@ any payment at or above what it requires.
 Runs once and exits. Each run, in this order:
 
 1. **Reads** the fee payer's SOL, the payment wallet's SOL and USDC, and the reference SOL
-   price (Pyth's SOL/USD account, through the same RPC).
+   price (MagicBlock's SOL/USD price account, through `ROLLUP_RPC_URL`).
 2. **Reconciles** the fee payer's last 15 minutes, transaction by transaction. If that looks
    like a drain, or cannot be proven not to be one, the run **stops here, moves nothing** and
    exits 4 (see "Monitoring").
@@ -255,12 +256,13 @@ USDC to SOL from 0.5 USDC up.
   again on what the simulation delivers. If the reference price itself is above the bound the
   job refuses (`price_above_bound`) until you raise it. Set it to about twice the current
   price and revisit it.
-- **The reference price** is Pyth's SOL/USD price account, decoded by the job: owned by Pyth's
-  receiver program, carrying the SOL/USD feed id, fully verified, at most 120 seconds old,
-  confidence within 1 percent. It does not depend on Jupiter. The order's guaranteed minimum
+- **The reference price** is MagicBlock's SOL/USD price account (oracle feed 6), decoded by
+  the job: owned by MagicBlock's oracle program, 134 bytes, carrying the SOL/USD feed id,
+  fully verified, at most 120 seconds old. The account has no confidence interval, so none
+  is checked. It does not depend on Jupiter. The order's guaranteed minimum
   must be within `MAX_SLIPPAGE_BPS` of it. With no usable price there is no swap. Two honest
   limits: it is a USD price and the swap pays USDC (treated as equal), and it is read through
-  your RPC, so an RPC that lies can lie about it too. That is what the operator's bound is for.
+  `ROLLUP_RPC_URL`, so an endpoint that lies can lie about it too. That is what the operator's bound is for.
 - **The transaction** contains compute-budget instructions and exactly one fill, no address
   lookup tables, and is paid for by the maker. No other program may be called at the top
   level, which refuses every stray transfer, approval, account closure and durable nonce.
@@ -315,7 +317,7 @@ never skipped. The run refuses (`history_unreadable`) and the next scheduled run
 
 - Railway does not start a cron run while the previous one is still running: its docs say
   the new run is skipped. The job also gives itself a hard deadline of 8 minutes, shorter
-  than the 10-minute schedule: every RPC call is cut off after 20 seconds, every HTTP call
+  than the hourly schedule (minute 0 of every hour): every RPC call is cut off after 20 seconds, every HTTP call
   after 10 or 30, every wait is bounded, no leg starts that could not finish in time, and a
   watchdog ends the process at 9 minutes with exit 3.
 - Balances and the day's counters are read again immediately before each signature. If they
@@ -379,6 +381,7 @@ The payment wallet's address is not a variable: it is `payment_address` in `kora
 | Variable | Secret | Default | Value |
 | --- | --- | --- | --- |
 | `RPC_URL` | yes | | mainnet RPC URL |
+| `ROLLUP_RPC_URL` | yes | **none, required** | https RPC URL of MagicBlock's rollup (plain http only for localhost), which serves the SOL/USD price account; a second trust point beside `RPC_URL` |
 | `PAYMENT_WALLET_PRIVATE_KEY` | **yes** | | the payment wallet's key, JSON array or base58 |
 | `FEE_PAYER` | no | | the fee payer's public key |
 | `MAX_USDC_PER_SOL` | no | **none, required** | the most USDC ever paid for one SOL; about twice the current price, at most 1000 |
@@ -405,7 +408,9 @@ parse. Its error names the variable and the rule, never the value.
 
 ## Deploying
 
-`deploy.md` has the full sequence. In short: Kora is a Railway web service built from `kora/`
+The values are set by the infra repo's k3s deploy (its `docs/k3s.md`): one Kora service, one refill
+CronJob running hourly at minute 0, and one fee payer. `deploy.md` has the old Railway sequence,
+kept until Railway is switched off. In short, on Railway: Kora is a Railway web service built from `kora/`
 with a public domain and the healthcheck `/liveness`; the refill job is a Railway cron service
 built from `refill/`, schedule once an hour, restart policy "never". Both are described
 in `.railway/railway.ts`.
@@ -421,8 +426,9 @@ than one:
   address for the whole deployment).
 - **One refill service per fee payer.** A refill job handles exactly one `FEE_PAYER`. Run one
   per replica, with the same `PAYMENT_WALLET_PRIVATE_KEY` and a different `FEE_PAYER`.
-- **Shift their schedules** so two jobs never start in the same minute: replica 1 at :00,
-  :10, ...; replica 2 at :05, :15, .... `.railway/railway.ts` does this when `REPLICAS` is 2.
+- **Shift their schedules** so two jobs never start in the same minute: replica 1 at minute 0
+  of every hour, replica 2 at minute 5. `.railway/railway.ts` does this when `REPLICAS` is 2. The
+  k3s deploy runs one refill job and one fee payer.
   Two jobs running at once on one wallet are the "second copy" case below.
 
 How the limits behave when jobs share a wallet:
@@ -545,7 +551,7 @@ Verified on 2026-10-02 and 2026-10-03:
   transactions hidden behind newer inbound transfers.
 - The job's guard, read-only, against genuine market-maker orders Jupiter built for real
   mainnet wallets: the fill instruction decoded, its amounts equal to the quote, the
-  simulation matching, nothing signed. And the Pyth price read from mainnet.
+  simulation matching, nothing signed. And the MagicBlock price read from the rollup endpoint.
 - A `DRY_RUN` against mainnet, read-only, with an empty throwaway wallet.
 
 **NOT VERIFIED:**
@@ -565,8 +571,8 @@ Verified on 2026-10-02 and 2026-10-03:
   available during this work predates `railway config`. `.railway/railway.ts` was evaluated
   with the SDK and produces the intended service graph; it was never applied. The statement
   that an overlapping cron run is skipped is from Railway's docs, not from a test.
-- How Railway reports a cron run that exits non-zero, and whether its builder picks Node 22
-  or newer from `refill/package.json`.
+- How Railway reports a cron run that exits non-zero. The refill image is built from
+  `refill/Dockerfile`, which pins the Node base image.
 - The caller-side checks. They live in the app; its test for the minimum payment is named in
   `deploy.md` and was not run here. The stable alternative's failure on a Lend withdrawal was
   established by the app's team on a fork, not re-run here.
